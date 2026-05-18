@@ -28,13 +28,13 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-export default function ProjectionChart({ portfolioReturn }) {
+export default function ProjectionChart({ portfolioReturn, assetMetricsMap = {} }) {
   const [horizon, setHorizon] = useState(5);
   const INITIAL = 100000;
 
   const data = useMemo(
-    () => generateProjectionData(portfolioReturn, INITIAL, horizon),
-    [portfolioReturn, horizon]
+    () => generateProjectionData(portfolioReturn, INITIAL, horizon, assetMetricsMap),
+    [portfolioReturn, horizon, assetMetricsMap]
   );
 
   // Only show every 12th point for cleaner chart
