@@ -1,26 +1,273 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: #06091a;
+  --color-foreground: #e2e8f0;
+  --color-surface: #0c1029;
+  --color-surface-elevated: #111638;
+  --color-surface-hover: #161c48;
+  --color-border: #1e2a5a;
+  --color-border-bright: #2d3a7a;
+  --color-accent: #00e5ff;
+  --color-accent-green: #00ff87;
+  --color-accent-red: #ff3860;
+  --color-accent-amber: #ffb900;
+  --color-accent-purple: #a855f7;
+  --color-muted: #475569;
+  --color-muted-foreground: #94a3b8;
+  --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1e2a5a #06091a;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(12, 16, 41, 0.8) 0%,
+    rgba(17, 22, 56, 0.6) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(30, 42, 90, 0.5);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(45, 58, 122, 0.8);
+  box-shadow: 0 0 30px rgba(0, 229, 255, 0.04);
+}
+
+/* Metric highlight card */
+.metric-card {
+  background: linear-gradient(
+    145deg,
+    rgba(12, 16, 41, 0.9) 0%,
+    rgba(17, 22, 56, 0.7) 100%
+  );
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(30, 42, 90, 0.4);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.metric-card:hover::before {
+  opacity: 1;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 229, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 229, 255, 0.08);
+}
+
+/* Animated gradient border */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 229, 255, 0.2),
+    rgba(0, 255, 135, 0.1),
+    rgba(168, 85, 247, 0.15)
+  );
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.gradient-border:hover::after {
+  opacity: 1;
+}
+
+/* Weight slider custom styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1e2a5a, #2d3a7a);
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00e5ff, #00ff87);
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  transition: box-shadow 0.2s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.6);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00e5ff, #00ff87);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
+
+/* Allocation bar */
+.allocation-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #1e2a5a;
+  overflow: hidden;
+  position: relative;
+}
+
+.allocation-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.3s ease;
+}
+
+/* Pulse animation */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Chart container glow */
+.chart-glow {
+  box-shadow: inset 0 0 60px rgba(0, 229, 255, 0.02),
+    0 0 40px rgba(0, 229, 255, 0.03);
+}
+
+/* Toggle button */
+.toggle-active {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(0, 255, 135, 0.1));
+  border-color: rgba(0, 229, 255, 0.4);
+  color: #00e5ff;
+}
+
+/* Custom number input */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+/* Research bullet types */
+.bullet-positive {
+  border-left: 3px solid #00ff87;
+  background: rgba(0, 255, 135, 0.04);
+}
+
+.bullet-warning {
+  border-left: 3px solid #ff3860;
+  background: rgba(255, 56, 96, 0.04);
+}
+
+.bullet-neutral {
+  border-left: 3px solid #ffb900;
+  background: rgba(255, 185, 0, 0.04);
+}
+
+/* Recharts tooltip styling */
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+/* Checkbox styling */
+.asset-checkbox {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid #2d3a7a;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-checkbox.checked {
+  background: linear-gradient(135deg, #00e5ff, #00ff87);
+  border-color: #00e5ff;
+}
+
+/* Neon text glow */
+.text-glow {
+  text-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+}
+
+/* Subtle grid background */
+.bg-grid {
+  background-image: linear-gradient(
+      rgba(30, 42, 90, 0.15) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, rgba(30, 42, 90, 0.15) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
