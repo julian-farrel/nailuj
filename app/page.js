@@ -10,99 +10,103 @@ import {
   computePortfolioMetrics,
   generateResearchSummary,
 } from "@/lib/analytics";
+import {
+  autoNormalizeWeights,
+  addAssetAndRebalance,
+  removeAssetAndRebalance,
+} from "@/lib/portfolioUtils";
 
 export default function Home() {
-  // assets: [{ ticker, name, type, metrics, loading, error }]
+  // assets: [{
+  //   ticker, name, type,
+  //   metrics: { expectedReturn, volatility, downsideDeviation, beta, maxDrawdown },
+  //   loading, error,
+  //   currentPrice, priceChange24h, priceChangePercent24h, currency
+  // }]
   const [assets, setAssets] = useState([]);
-  // weights: { ticker: number (0-100) }
+
+  // weights: { ticker: number (0-100) } — always auto-normalized to 100
   const [weights, setWeights] = useState({});
 
-  const totalWeight = useMemo(
-    () => Object.values(weights).reduce((s, v) => s + v, 0),
-    [weights]
-  );
-  const isValid = Math.abs(totalWeight - 100) < 0.01;
+  // ── Derived state ──────────────────────────────────────────
 
-  // Build assetMetricsMap from loaded assets
   const assetMetricsMap = useMemo(() => {
     const map = {};
-    for (const asset of assets) {
-      if (asset.metrics) {
-        map[asset.ticker] = asset.metrics;
-      }
+    for (const a of assets) {
+      if (a.metrics) map[a.ticker] = a.metrics;
     }
     return map;
   }, [assets]);
 
-  // Check if all weighted assets have metrics loaded
-  const allMetricsLoaded = useMemo(() => {
-    return Object.keys(weights).every(
-      (ticker) => assetMetricsMap[ticker] && weights[ticker] >= 0
-    );
-  }, [weights, assetMetricsMap]);
+  const allMetricsReady = useMemo(() =>
+    Object.keys(weights).length > 0 &&
+    Object.keys(weights).every((t) => assetMetricsMap[t]),
+    [weights, assetMetricsMap]
+  );
 
-  // Normalize weights to decimals
+  // Normalized to decimals for the analytics engine
   const normalizedWeights = useMemo(() => {
     const nw = {};
-    for (const [k, v] of Object.entries(weights)) {
-      nw[k] = v / 100;
-    }
+    for (const [k, v] of Object.entries(weights)) nw[k] = v / 100;
     return nw;
   }, [weights]);
 
-  // Compute portfolio metrics
   const metrics = useMemo(
-    () =>
-      isValid && allMetricsLoaded
-        ? computePortfolioMetrics(assetMetricsMap, normalizedWeights)
-        : null,
-    [isValid, allMetricsLoaded, assetMetricsMap, normalizedWeights]
+    () => allMetricsReady
+      ? computePortfolioMetrics(assetMetricsMap, normalizedWeights)
+      : null,
+    [allMetricsReady, assetMetricsMap, normalizedWeights]
   );
 
   const research = useMemo(
-    () => (metrics ? generateResearchSummary(metrics) : null),
+    () => metrics ? generateResearchSummary(metrics) : null,
     [metrics]
   );
 
-  // ── Add asset: fetch historical data + compute metrics ──
+  const anyLoading = assets.some((a) => a.loading);
+
+  // ── Asset Actions ──────────────────────────────────────────
+
   const handleAddAsset = useCallback(async (ticker, name, type) => {
-    // Add immediately with loading state
+    // 1. Immediately add asset card with loading state + rebalanced weights
     setAssets((prev) => [
       ...prev,
-      { ticker, name, type, metrics: null, loading: true, error: null },
+      { ticker, name, type, metrics: null, loading: true, error: null,
+        currentPrice: null, priceChange24h: null, priceChangePercent24h: null, currency: "USD" },
     ]);
-    setWeights((prev) => ({ ...prev, [ticker]: 0 }));
+    setWeights((prev) => addAssetAndRebalance(prev, ticker));
 
+    // 2. Fetch historical data + quote
     try {
-      const res = await fetch(
-        `/api/historical?ticker=${encodeURIComponent(ticker)}`
-      );
+      const res = await fetch(`/api/historical?ticker=${encodeURIComponent(ticker)}`);
       const data = await res.json();
 
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Failed to fetch data");
-      }
+      if (!res.ok || data.error) throw new Error(data.error || "Failed to fetch data");
 
-      // Extract closing prices
       const assetPrices = data.assetPrices.map((d) => d.close);
       const spyPrices = data.spyPrices.map((d) => d.close);
-
-      // Compute metrics from raw prices
-      const metrics = computeAssetMetrics(assetPrices, spyPrices);
+      const computedMetrics = computeAssetMetrics(assetPrices, spyPrices);
 
       setAssets((prev) =>
         prev.map((a) =>
           a.ticker === ticker
-            ? { ...a, metrics, loading: false, error: null }
+            ? {
+                ...a,
+                metrics: computedMetrics,
+                loading: false,
+                error: null,
+                currentPrice: data.currentPrice ?? null,
+                priceChange24h: data.priceChange24h ?? null,
+                priceChangePercent24h: data.priceChangePercent24h ?? null,
+                currency: data.currency ?? "USD",
+              }
             : a
         )
       );
     } catch (err) {
       setAssets((prev) =>
         prev.map((a) =>
-          a.ticker === ticker
-            ? { ...a, loading: false, error: err.message }
-            : a
+          a.ticker === ticker ? { ...a, loading: false, error: err.message } : a
         )
       );
     }
@@ -110,15 +114,12 @@ export default function Home() {
 
   const handleRemoveAsset = useCallback((ticker) => {
     setAssets((prev) => prev.filter((a) => a.ticker !== ticker));
-    setWeights((prev) => {
-      const copy = { ...prev };
-      delete copy[ticker];
-      return copy;
-    });
+    setWeights((prev) => removeAssetAndRebalance(prev, ticker));
   }, []);
 
-  const handleWeightChange = useCallback((ticker, value) => {
-    setWeights((prev) => ({ ...prev, [ticker]: value }));
+  // Auto-normalize: when user changes one weight, proportionally adjust all others
+  const handleWeightChange = useCallback((ticker, newValue) => {
+    setWeights((prev) => autoNormalizeWeights(prev, ticker, newValue));
   }, []);
 
   const handleReset = useCallback(() => {
@@ -126,7 +127,7 @@ export default function Home() {
     setWeights({});
   }, []);
 
-  const anyLoading = assets.some((a) => a.loading);
+  // ── Render ─────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-grid">
@@ -134,7 +135,7 @@ export default function Home() {
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Portfolio Builder - left side */}
+          {/* Left: Portfolio Builder */}
           <div className="lg:col-span-5">
             <PortfolioBuilder
               assets={assets}
@@ -146,60 +147,19 @@ export default function Home() {
             />
           </div>
 
-          {/* Right column: Metrics + Chart */}
+          {/* Right: Analytics */}
           <div className="lg:col-span-7 space-y-6">
-            {isValid && metrics && !anyLoading ? (
-              <>
-                <MetricsPanel metrics={metrics} />
-                <ProjectionChart
-                  portfolioReturn={metrics.expectedReturn}
-                  assetMetricsMap={assetMetricsMap}
-                />
-              </>
-            ) : (
-              <div className="glass-card p-12 flex flex-col items-center justify-center text-center h-full min-h-[400px]">
-                <div className="w-16 h-16 rounded-2xl bg-surface-elevated border border-border flex items-center justify-center mb-4">
-                  {anyLoading ? (
-                    <svg className="w-8 h-8 text-accent animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  ) : (
-                    <svg className="w-8 h-8 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  )}
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">
-                  {anyLoading
-                    ? "Fetching Market Data..."
-                    : assets.length === 0
-                    ? "Build Your Portfolio"
-                    : "Allocate Your Portfolio"}
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  {anyLoading
-                    ? "Computing risk metrics from live historical data. This may take a moment."
-                    : assets.length === 0
-                    ? "Search for any stock, cryptocurrency, ETF, or commodity to get started with live market analytics."
-                    : <>Set weights to exactly <span className="text-accent font-mono font-bold">100%</span> to activate the quantitative analytics engine.</>}
-                </p>
-                {!anyLoading && assets.length > 0 && (
-                  <div className="mt-4 px-4 py-2 rounded-lg bg-surface-elevated border border-border">
-                    <span className="text-xs font-mono text-muted-foreground">
-                      Current allocation:{" "}
-                      <span className={totalWeight > 100 ? "text-accent-red" : "text-accent-amber"}>
-                        {totalWeight.toFixed(1)}%
-                      </span>
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+            <MetricsPanel metrics={metrics} hasAssets={assets.length > 0} />
+            <ProjectionChart
+              portfolioReturn={metrics?.expectedReturn ?? null}
+              assetMetricsMap={assetMetricsMap}
+              hasAssets={assets.length > 0}
+            />
           </div>
         </div>
 
         {/* Research Report */}
-        {isValid && research && !anyLoading && <ResearchReport research={research} />}
+        {metrics && !anyLoading && <ResearchReport research={research} />}
 
         {/* Footer */}
         <footer className="border-t border-border/30 pt-6 pb-8 flex flex-col sm:flex-row items-center justify-between gap-4">

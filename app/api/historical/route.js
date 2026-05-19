@@ -20,8 +20,8 @@ export async function GET(request) {
 
     const formatDate = (d) => d.toISOString().split("T")[0];
 
-    // Fetch asset + SPY (benchmark) in parallel
-    const [assetHistory, spyHistory] = await Promise.all([
+    // Fetch asset historical, SPY historical, and asset quote in parallel
+    const [assetHistory, spyHistory, quoteResult] = await Promise.all([
       yahooFinance.historical(ticker, {
         period1: formatDate(startDate),
         period2: formatDate(endDate),
@@ -32,6 +32,7 @@ export async function GET(request) {
         period2: formatDate(endDate),
         interval: "1d",
       }),
+      yahooFinance.quote(ticker).catch(() => null),
     ]);
 
     if (!assetHistory || assetHistory.length < 30) {
@@ -56,11 +57,28 @@ export async function GET(request) {
         close: d.close,
       }));
 
+    // Extract current price and 24h change from quote
+    let currentPrice = null;
+    let priceChange24h = null;
+    let priceChangePercent24h = null;
+    let currency = "USD";
+
+    if (quoteResult) {
+      currentPrice = quoteResult.regularMarketPrice ?? null;
+      priceChange24h = quoteResult.regularMarketChange ?? null;
+      priceChangePercent24h = quoteResult.regularMarketChangePercent ?? null;
+      currency = quoteResult.currency || "USD";
+    }
+
     return Response.json({
       ticker,
       assetPrices,
       spyPrices,
       dataPoints: assetPrices.length,
+      currentPrice,
+      priceChange24h,
+      priceChangePercent24h,
+      currency,
     });
   } catch (error) {
     console.error(`Historical data error for ${ticker}:`, error);
