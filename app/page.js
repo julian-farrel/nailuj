@@ -130,10 +130,10 @@ export default function Home() {
   // ── Render ─────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-grid">
+    <div className="min-h-screen bg-grid flex flex-col">
       <Header />
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left: Portfolio Builder */}
           <div className="lg:col-span-5">
@@ -158,19 +158,26 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Research Report */}
-        {metrics && !anyLoading && <ResearchReport research={research} />}
-
-        {/* Footer */}
-        <footer className="border-t border-border/30 pt-6 pb-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[11px] font-mono text-muted/50">
-            © {new Date().getFullYear()} Meridian Capital Partners, LLC. All rights reserved.
-          </p>
-          <p className="text-[11px] font-mono text-muted/50">
-            Institutional Use Only — Not For Redistribution
-          </p>
-        </footer>
+        {/* Research Report — contains the Export PDF button */}
+        {metrics && !anyLoading && (
+          <ResearchReport
+            research={research}
+            assets={assets}
+            weights={weights}
+            metrics={metrics}
+          />
+        )}
       </main>
+
+      {/* Footer (Full Width) */}
+      <footer className="w-full border-t border-border/30 bg-background/50 backdrop-blur-sm pt-6 pb-8 px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-[11px] font-mono text-muted/50">
+          © {new Date().getFullYear()} Meridian Capital Partners, LLC. All rights reserved.
+        </p>
+        <p className="text-[11px] font-mono text-muted/50">
+          Institutional Use Only — Not For Redistribution
+        </p>
+      </footer>
     </div>
   );
 }

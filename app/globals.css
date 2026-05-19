@@ -211,10 +211,17 @@ input[type="range"]::-moz-range-thumb {
   color: #00e5ff;
 }
 
-/* Custom number input */
+/* Hide number input spinners across all browsers */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
-  opacity: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  opacity: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Research bullet types */

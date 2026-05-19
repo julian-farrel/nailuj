@@ -241,9 +241,9 @@ export default function PortfolioBuilder({
                       const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
                       onWeightChange(asset.ticker, val);
                     }}
-                    className="w-[52px] px-2 py-1.5 rounded-lg bg-surface border border-border text-center text-sm font-mono font-bold text-accent focus:outline-none focus:border-accent/60 focus:shadow-[0_0_12px_rgba(0,229,255,0.1)] transition-all"
+                    className="w-[48px] px-1 py-1 bg-transparent border-none text-right text-sm font-mono font-bold text-accent focus:outline-none focus:ring-0"
                   />
-                  <span className="text-xs font-mono text-muted-foreground">%</span>
+                  <span className="text-sm font-mono text-muted-foreground">%</span>
                 </div>
 
                 {/* Remove button */}

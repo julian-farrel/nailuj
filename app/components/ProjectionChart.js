@@ -147,7 +147,7 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, IN
   const portfolioGain = (((finalPortfolio - INITIAL) / INITIAL) * 100).toFixed(1);
 
   return (
-    <section className="glass-card p-6 chart-glow animate-fade-in-up">
+    <section id="projection-chart" className="glass-card p-6 chart-glow animate-fade-in-up">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
