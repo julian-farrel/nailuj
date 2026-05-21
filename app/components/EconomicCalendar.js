@@ -1,41 +1,54 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 const CATEGORY_CONFIG = {
-  FOMC:     { color: "#a855f7", bg: "rgba(168,85,247,0.12)", label: "FOMC"     },
-  CPI:      { color: "#f59e0b", bg: "rgba(245,158,11,0.12)", label: "CPI"      },
-  NFP:      { color: "#06b6d4", bg: "rgba(6,182,212,0.12)",  label: "NFP"      },
-  GDP:      { color: "#22c55e", bg: "rgba(34,197,94,0.12)",  label: "GDP"      },
-  PCE:      { color: "#38bdf8", bg: "rgba(56,189,248,0.12)", label: "PCE"      },
-  EARNINGS: { color: "#fb923c", bg: "rgba(251,146,60,0.12)", label: "EARN"     },
+  FOMC:     { color: "#a855f7", bg: "rgba(168,85,247,0.14)", label: "FOMC"   },
+  CPI:      { color: "#f59e0b", bg: "rgba(245,158,11,0.14)", label: "CPI"    },
+  NFP:      { color: "#06b6d4", bg: "rgba(6,182,212,0.14)",  label: "NFP"    },
+  GDP:      { color: "#22c55e", bg: "rgba(34,197,94,0.14)",  label: "GDP"    },
+  PCE:      { color: "#38bdf8", bg: "rgba(56,189,248,0.14)", label: "PCE"    },
+  EARNINGS: { color: "#fb923c", bg: "rgba(251,146,60,0.14)", label: "EARN"   },
+  CLAIMS:   { color: "#94a3b8", bg: "rgba(148,163,184,0.1)", label: "CLAIMS" },
+  PMI:      { color: "#4ade80", bg: "rgba(74,222,128,0.1)",  label: "PMI"    },
+  CONF:     { color: "#e879f9", bg: "rgba(232,121,249,0.1)", label: "CONF"   },
 };
 
-const IMPACT_DOT = {
-  high:   "#f87171",
-  medium: "#f59e0b",
-  low:    "#94a3b8",
-};
+const IMPACT_COLOR = { high: "#f87171", medium: "#f59e0b", low: "#94a3b8" };
+const DOW_LABELS   = ["S", "M", "T", "W", "T", "F", "S"];
 
-function formatDate(isoStr) {
-  const d = new Date(isoStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" });
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function daysFromNow(isoStr) {
-  const now  = new Date();
-  const then = new Date(isoStr + "T00:00:00");
-  const diff = Math.round((then - now) / 86400000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff < 0)  return `${Math.abs(diff)}d ago`;
-  return `in ${diff}d`;
+function buildCalendarGrid(year, month) {
+  // month: 0-indexed
+  const firstDay  = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  return cells;
 }
 
 export default function EconomicCalendar() {
   const [events,  setEvents]  = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter,  setFilter]  = useState("ALL");
-  const [dateFilter, setDateFilter] = useState("");
+
+  // Local date for "today"
+  const localToday = useMemo(() => {
+    const t = new Date();
+    return isoDate(t);
+  }, []);
+
+  const [selectedDate, setSelectedDate] = useState(null); // set after hydration
+
+  // Prevent hydration mismatch — pick selected date client-side only
+  useEffect(() => {
+    setSelectedDate(localToday);
+  }, [localToday]);
+
+  const [viewYear,  setViewYear]  = useState(() => new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
 
   useEffect(() => {
     fetch("/api/calendar")
@@ -44,19 +57,39 @@ export default function EconomicCalendar() {
       .catch(() => setLoading(false));
   }, []);
 
-  const categories = ["ALL", "FOMC", "CPI", "NFP", "GDP", "PCE", "EARNINGS"];
+  // Set of ISO dates that have events — for dot indicators
+  const eventDates = useMemo(() => {
+    const s = new Set();
+    events.forEach((e) => s.add(e.date));
+    return s;
+  }, [events]);
 
-  const visible = events.filter((e) => {
-    if (filter !== "ALL" && e.category !== filter) return false;
-    if (dateFilter && e.date < dateFilter) return false;
-    return true;
+  // Events for selected date
+  const dayEvents = useMemo(() => {
+    if (!selectedDate) return [];
+    return events.filter((e) => e.date === selectedDate);
+  }, [events, selectedDate]);
+
+  const grid = useMemo(() => buildCalendarGrid(viewYear, viewMonth), [viewYear, viewMonth]);
+
+  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString("en-US", {
+    month: "long", year: "numeric",
   });
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+    else setViewMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+    else setViewMonth((m) => m + 1);
+  };
 
   return (
     <aside
       style={{
-        width: "288px",
-        minWidth: "288px",
+        width: "284px",
+        minWidth: "284px",
         height: "100vh",
         display: "flex",
         flexDirection: "column",
@@ -65,28 +98,32 @@ export default function EconomicCalendar() {
         WebkitBackdropFilter: "blur(20px)",
         borderLeft: "1px solid rgba(255,255,255,0.06)",
         flexShrink: 0,
+        overflowY: "auto",
+        scrollbarWidth: "none",
       }}
     >
       <style>{`
-        .ec-scroll::-webkit-scrollbar { display: none; }
+        .ec-cal::-webkit-scrollbar { display: none; }
+        .ec-day { transition: background 0.12s, transform 0.1s; cursor: pointer; }
+        .ec-day:hover { background: rgba(255,255,255,0.07) !important; }
         .ec-item { transition: background 0.12s; }
         .ec-item:hover { background: rgba(255,255,255,0.04); }
-        .ec-tab { transition: all 0.15s; cursor: pointer; }
-        input[type="date"]::-webkit-calendar-picker-indicator {
-          filter: invert(0.5) sepia(1) saturate(0) brightness(1.5);
-          cursor: pointer;
-        }
+        @keyframes ec-pulse { 75%,100% { transform: scale(2.2); opacity: 0; } }
       `}</style>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{
         padding: "14px 14px 10px",
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         flexShrink: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px" }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "12px" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a855f7"
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8"  y1="2" x2="8"  y2="6"/>
+            <line x1="3"  y1="10" x2="21" y2="10"/>
           </svg>
           <span style={{
             fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em",
@@ -96,189 +133,243 @@ export default function EconomicCalendar() {
           </span>
         </div>
 
-        {/* Date filter */}
-        <input
-          type="date"
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-          style={{
-            width: "100%",
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: "8px",
-            color: "rgba(255,255,255,0.7)",
-            fontSize: "10px",
-            fontFamily: "monospace",
-            padding: "5px 8px",
-            outline: "none",
-            marginBottom: "8px",
-            boxSizing: "border-box",
-          }}
-        />
-
-        {/* Category tabs — horizontal scroll */}
+        {/* ── Month navigation ── */}
         <div style={{
-          display: "flex", gap: "3px", overflowX: "auto", scrollbarWidth: "none",
+          display: "flex", alignItems: "center",
+          justifyContent: "space-between", marginBottom: "10px",
         }}>
-          {categories.map((cat) => {
-            const isActive = filter === cat;
-            const cfg = CATEGORY_CONFIG[cat];
-            const accent = cfg?.color || "#94a3b8";
+          <button onClick={prevMonth} style={{
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "6px", color: "rgba(255,255,255,0.5)",
+            cursor: "pointer", padding: "3px 8px", fontSize: "11px", lineHeight: 1,
+            transition: "color 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+          >‹</button>
+          <span style={{
+            fontSize: "10px", fontWeight: 700, color: "rgba(255,255,255,0.7)",
+            fontFamily: "monospace", letterSpacing: "0.04em",
+          }}>
+            {monthLabel}
+          </span>
+          <button onClick={nextMonth} style={{
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "6px", color: "rgba(255,255,255,0.5)",
+            cursor: "pointer", padding: "3px 8px", fontSize: "11px", lineHeight: 1,
+            transition: "color 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+          >›</button>
+        </div>
+
+        {/* ── Day-of-week labels ── */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "1px", marginBottom: "4px",
+        }}>
+          {DOW_LABELS.map((d, i) => (
+            <div key={i} style={{
+              textAlign: "center", fontSize: "8px", fontWeight: 700,
+              fontFamily: "monospace", color: "rgba(255,255,255,0.25)",
+              letterSpacing: "0.06em", padding: "2px 0",
+            }}>
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* ── Day grid ── */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px",
+        }}>
+          {grid.map((day, idx) => {
+            if (!day) {
+              return <div key={`e-${idx}`} />;
+            }
+
+            const cellDate = `${viewYear}-${String(viewMonth + 1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+            const isToday    = cellDate === localToday;
+            const isSelected = cellDate === selectedDate;
+            const hasEvent   = eventDates.has(cellDate);
+
             return (
-              <button
-                key={cat}
-                className="ec-tab"
-                onClick={() => setFilter(cat)}
+              <div
+                key={cellDate}
+                className="ec-day"
+                onClick={() => setSelectedDate(cellDate)}
                 style={{
-                  flexShrink: 0,
-                  padding: "3px 7px",
-                  borderRadius: "5px",
-                  border: isActive
-                    ? `1px solid ${accent}55`
-                    : "1px solid rgba(255,255,255,0.07)",
-                  background: isActive ? `${accent}15` : "transparent",
-                  color: isActive ? accent : "rgba(255,255,255,0.3)",
-                  fontSize: "8px",
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  fontFamily: "monospace",
+                  position: "relative",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                  height: "28px", borderRadius: "6px",
+                  background: isSelected
+                    ? "#a855f7"
+                    : isToday
+                    ? "rgba(168,85,247,0.18)"
+                    : "transparent",
+                  border: isToday && !isSelected
+                    ? "1px solid rgba(168,85,247,0.4)"
+                    : "1px solid transparent",
                 }}
               >
-                {cat === "ALL" ? "ALL" : (CATEGORY_CONFIG[cat]?.label ?? cat)}
-              </button>
+                <span style={{
+                  fontSize: "10px", fontWeight: isToday || isSelected ? 700 : 400,
+                  fontFamily: "monospace",
+                  color: isSelected
+                    ? "#fff"
+                    : isToday
+                    ? "#a855f7"
+                    : "rgba(255,255,255,0.65)",
+                  lineHeight: 1,
+                }}>
+                  {day}
+                </span>
+                {/* Event indicator dot */}
+                {hasEvent && !isSelected && (
+                  <span style={{
+                    position: "absolute", bottom: 3,
+                    width: 3, height: 3, borderRadius: "50%",
+                    background: "#f59e0b",
+                    boxShadow: "0 0 4px #f59e0b80",
+                  }} />
+                )}
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* Event list */}
-      <div
-        className="ec-scroll"
-        style={{ flex: 1, overflowY: "auto", scrollbarWidth: "none" }}
-      >
+      {/* ── Selected date label ── */}
+      {selectedDate && (
+        <div style={{
+          padding: "10px 14px 6px",
+          borderBottom: "1px solid rgba(255,255,255,0.05)",
+          flexShrink: 0,
+        }}>
+          <span style={{
+            fontSize: "9px", fontFamily: "monospace", fontWeight: 700,
+            color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em",
+          }}>
+            {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", {
+              weekday: "long", month: "long", day: "numeric",
+            }).toUpperCase()}
+          </span>
+        </div>
+      )}
+
+      {/* ── Event list for selected date ── */}
+      <div className="ec-cal" style={{ flex: 1, overflowY: "auto", scrollbarWidth: "none" }}>
         {loading ? (
-          Array.from({ length: 8 }).map((_, i) => (
+          Array.from({ length: 3 }).map((_, i) => (
             <div key={i} style={{
-              padding: "10px 14px",
-              borderBottom: "1px solid rgba(255,255,255,0.035)",
-              display: "flex", gap: "10px", alignItems: "flex-start",
+              padding: "11px 14px",
+              borderBottom: "1px solid rgba(255,255,255,0.04)",
+              display: "flex", gap: "10px",
             }}>
               <div style={{
-                width: 34, height: 34, borderRadius: 7, flexShrink: 0,
-                background: "rgba(255,255,255,0.05)",
-                animation: "pulse 1.5s ease infinite",
+                width: 36, height: 36, borderRadius: 7, flexShrink: 0,
+                background: "rgba(255,255,255,0.06)",
               }} />
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5 }}>
-                <div style={{
-                  height: 9, width: "80%", borderRadius: 3,
-                  background: "rgba(255,255,255,0.06)",
-                  animation: "pulse 1.5s ease infinite",
-                }} />
-                <div style={{
-                  height: 8, width: "50%", borderRadius: 3,
-                  background: "rgba(255,255,255,0.04)",
-                  animation: "pulse 1.5s ease infinite",
-                }} />
+                <div style={{ height: 9, width: "75%", borderRadius: 3, background: "rgba(255,255,255,0.06)" }} />
+                <div style={{ height: 8, width: "50%", borderRadius: 3, background: "rgba(255,255,255,0.04)" }} />
               </div>
             </div>
           ))
-        ) : visible.length === 0 ? (
+        ) : dayEvents.length === 0 ? (
           <div style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            height: "160px", color: "rgba(255,255,255,0.2)",
-            fontSize: "11px", fontFamily: "monospace",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            justifyContent: "center", padding: "32px 20px", gap: "10px",
+            textAlign: "center",
           }}>
-            No events
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+              stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round">
+              <rect x="3" y="4" width="18" height="18" rx="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8"  y1="2" x2="8"  y2="6"/>
+              <line x1="3"  y1="10" x2="21" y2="10"/>
+            </svg>
+            <p style={{
+              fontSize: "11px", color: "rgba(255,255,255,0.25)",
+              fontFamily: "monospace", margin: 0, lineHeight: 1.5,
+            }}>
+              No economic news or<br />earnings scheduled<br />for this date.
+            </p>
           </div>
         ) : (
-          visible.map((event, idx) => {
+          dayEvents.map((event) => {
             const cfg = CATEGORY_CONFIG[event.category] || {
               color: "#94a3b8", bg: "rgba(148,163,184,0.1)", label: event.category,
             };
-            const impactColor = IMPACT_DOT[event.impact] || "#94a3b8";
-            const relative    = daysFromNow(event.date);
-            const isToday     = relative === "Today";
-            const isTomorrow  = relative === "Tomorrow";
+            const impactColor = IMPACT_COLOR[event.impact] || "#94a3b8";
 
             return (
               <div
-                key={idx}
+                key={event.id}
                 className="ec-item"
                 style={{
                   display: "flex", gap: "10px", alignItems: "flex-start",
-                  padding: "10px 14px",
-                  borderBottom: "1px solid rgba(255,255,255,0.035)",
-                  background: isToday ? "rgba(168,85,247,0.05)" : undefined,
+                  padding: "11px 14px",
+                  borderBottom: "1px solid rgba(255,255,255,0.04)",
                 }}
               >
-                {/* Date badge */}
+                {/* Category badge */}
                 <div style={{
-                  width: 38, flexShrink: 0,
+                  width: 36, flexShrink: 0,
                   background: cfg.bg,
-                  border: `1px solid ${cfg.color}30`,
+                  border: `1px solid ${cfg.color}35`,
                   borderRadius: "7px",
-                  padding: "5px 4px",
+                  padding: "5px 3px",
                   textAlign: "center",
                 }}>
                   <div style={{
-                    fontSize: "8px", fontFamily: "monospace", fontWeight: 700,
-                    color: cfg.color, letterSpacing: "0.04em",
+                    fontSize: "7px", fontFamily: "monospace", fontWeight: 800,
+                    color: cfg.color, letterSpacing: "0.02em",
                   }}>
-                    {new Date(event.date + "T00:00:00").toLocaleDateString("en-US", { month: "short" }).toUpperCase()}
+                    {cfg.label}
                   </div>
-                  <div style={{
-                    fontSize: "14px", fontFamily: "monospace", fontWeight: 800,
-                    color: "rgba(255,255,255,0.85)", lineHeight: 1.1,
-                  }}>
-                    {new Date(event.date + "T00:00:00").getDate()}
-                  </div>
+                  {event.ticker && (
+                    <div style={{
+                      fontSize: "8px", fontFamily: "monospace", fontWeight: 700,
+                      color: "rgba(255,255,255,0.7)", marginTop: "2px",
+                    }}>
+                      {event.ticker}
+                    </div>
+                  )}
                 </div>
 
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "3px" }}>
-                    <span style={{
-                      fontSize: "8px", fontWeight: 700, fontFamily: "monospace",
-                      color: cfg.color, letterSpacing: "0.06em",
+                  <div style={{
+                    display: "flex", alignItems: "center",
+                    justifyContent: "space-between", marginBottom: "3px",
+                  }}>
+                    <p style={{
+                      fontSize: "11px", fontWeight: 600,
+                      color: "rgba(255,255,255,0.85)", margin: 0,
+                      lineHeight: 1.35,
                     }}>
-                      {cfg.label}
-                    </span>
-                    {event.ticker && (
-                      <span style={{
-                        fontSize: "8px", fontFamily: "monospace", fontWeight: 700,
-                        color: "rgba(255,255,255,0.45)",
-                        background: "rgba(255,255,255,0.06)",
-                        padding: "0px 4px", borderRadius: "3px",
-                      }}>
-                        {event.ticker}
-                      </span>
-                    )}
+                      {event.title}
+                    </p>
                     {/* Impact dot */}
                     <span style={{
                       width: 5, height: 5, borderRadius: "50%",
-                      background: impactColor, marginLeft: "auto",
-                      flexShrink: 0, boxShadow: `0 0 4px ${impactColor}80`,
+                      background: impactColor, flexShrink: 0, marginLeft: "6px",
+                      boxShadow: `0 0 5px ${impactColor}80`,
                     }} />
                   </div>
-
                   <p style={{
-                    fontSize: "11px", fontWeight: 600,
-                    color: "rgba(255,255,255,0.82)", margin: "0 0 3px",
-                    lineHeight: 1.3,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    fontSize: "9px", color: "rgba(255,255,255,0.28)",
+                    fontFamily: "monospace", margin: 0,
+                    overflow: "hidden", textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}>
-                    {event.title}
+                    {event.description}
                   </p>
-
-                  <span style={{
-                    fontSize: "8.5px", fontFamily: "monospace",
-                    color: isToday   ? "#a855f7"
-                           : isTomorrow ? "#f59e0b"
-                           : "rgba(255,255,255,0.3)",
-                    fontWeight: isToday || isTomorrow ? 700 : 400,
-                  }}>
-                    {formatDate(event.date)} · {relative}
-                  </span>
                 </div>
               </div>
             );
@@ -286,19 +377,31 @@ export default function EconomicCalendar() {
         )}
       </div>
 
-      {/* Footer */}
+      {/* ── Legend ── */}
       <div style={{
-        padding: "7px 14px",
+        padding: "8px 14px",
         borderTop: "1px solid rgba(255,255,255,0.05)",
         flexShrink: 0,
+        display: "flex", gap: "6px", flexWrap: "wrap",
       }}>
-        <p style={{
-          fontSize: "8.5px", color: "rgba(255,255,255,0.18)",
-          fontFamily: "monospace", margin: 0, textAlign: "center",
-          letterSpacing: "0.05em",
-        }}>
-          FOMC · CPI · NFP · GDP · PCE · Earnings
-        </p>
+        {[
+          { label: "High Impact",   color: "#f87171" },
+          { label: "Medium Impact", color: "#f59e0b" },
+          { label: "Has Event",     color: "#f59e0b", shape: "dot" },
+        ].map(({ label, color, shape }) => (
+          <span key={label} style={{
+            display: "flex", alignItems: "center", gap: "4px",
+            fontSize: "8px", color: "rgba(255,255,255,0.2)", fontFamily: "monospace",
+          }}>
+            <span style={{
+              width: shape === "dot" ? 5 : 8,
+              height: shape === "dot" ? 5 : 4,
+              borderRadius: shape === "dot" ? "50%" : "2px",
+              background: color, flexShrink: 0,
+            }} />
+            {label}
+          </span>
+        ))}
       </div>
     </aside>
   );

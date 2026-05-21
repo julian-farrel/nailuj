@@ -1,156 +1,203 @@
 import { NextResponse } from "next/server";
 
-// ── Static high-impact macro + earnings calendar ──────────────────────────────
-// Dynamically builds events relative to today's date so the calendar
-// stays relevant without external API calls.
-
-function isoDate(date) {
-  return date.toISOString().split("T")[0];
+// Returns dates relative to *today* so the calendar never looks stale.
+function isoDate(d) {
+  return d.toISOString().split("T")[0];
 }
 
 function addDays(base, n) {
   const d = new Date(base);
-  d.setDate(d.getDate() + n);
+  d.setUTCDate(d.getUTCDate() + n);
   return d;
 }
 
-function nextWeekday(date, targetDow) {
-  // targetDow: 0=Sun,1=Mon,...,6=Sat
-  const d = new Date(date);
-  const current = d.getDay();
-  const diff = (targetDow - current + 7) % 7 || 7;
-  d.setDate(d.getDate() + diff);
+// Next occurrence of a given weekday (0=Sun … 6=Sat) on or after `from`.
+function nextDow(from, dow) {
+  const d = new Date(from);
+  while (d.getUTCDay() !== dow) d.setUTCDate(d.getUTCDate() + 1);
   return d;
 }
 
 export async function GET() {
+  // Use UTC midnight of today as the anchor
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-indexed
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 
-  // FOMC meetings 2025 (approx. every 6 weeks)
-  const fomcDates2025 = [
-    "2025-01-29", "2025-03-19", "2025-05-07",
-    "2025-06-18", "2025-07-30", "2025-09-17",
-    "2025-10-29", "2025-12-10",
-  ];
-  const fomcDates2026 = [
-    "2026-01-28", "2026-03-18", "2026-04-29",
-    "2026-06-10", "2026-07-29", "2026-09-16",
-    "2026-10-28", "2026-12-09",
-  ];
-  const fomcDates = [...fomcDates2025, ...fomcDates2026];
+  const events = [];
 
-  // CPI release days (typically 2nd or 3rd Wed of month)
-  const cpiDates = [];
-  for (let m = 0; m < 12; m++) {
-    const firstOfMonth = new Date(year, m, 1);
-    const wed = nextWeekday(firstOfMonth, 3);
-    const secondWed = addDays(wed, 7);
-    cpiDates.push(isoDate(secondWed));
-  }
-
-  // NFP (Non-Farm Payrolls) — first Friday of each month
-  const nfpDates = [];
-  for (let m = 0; m < 12; m++) {
-    const firstOfMonth = new Date(year, m, 1);
-    const fri = nextWeekday(addDays(firstOfMonth, -1), 5);
-    if (fri.getMonth() === m) nfpDates.push(isoDate(fri));
-    else nfpDates.push(isoDate(nextWeekday(firstOfMonth, 5)));
-  }
-
-  // GDP releases — last Thursday of Jan, Apr, Jul, Oct
-  const gdpMonths = [0, 3, 6, 9];
-  const gdpDates = gdpMonths.map((m) => {
-    const lastDay = new Date(year, m + 1, 0);
-    const d = new Date(lastDay);
-    while (d.getDay() !== 4) d.setDate(d.getDate() - 1);
-    return isoDate(d);
+  // ── Recurring weekly events ──────────────────────────────────────────────
+  // Initial Jobless Claims — every Thursday
+  const nextThurs = nextDow(today, 4);
+  events.push({
+    id: "ijc-0",
+    date: isoDate(nextThurs),
+    title: "Initial Jobless Claims",
+    type: "macro",
+    category: "CLAIMS",
+    impact: "medium",
+    description: "Weekly US unemployment insurance claims filed for the first time.",
+  });
+  events.push({
+    id: "ijc-1",
+    date: isoDate(addDays(nextThurs, 7)),
+    title: "Initial Jobless Claims",
+    type: "macro",
+    category: "CLAIMS",
+    impact: "medium",
+    description: "Weekly US unemployment insurance claims filed for the first time.",
   });
 
-  // PCE Inflation — last Friday of Jan, Feb, Mar, Apr...
-  const pceDates = [];
-  for (let m = 0; m < 12; m++) {
-    const lastDay = new Date(year, m + 1, 0);
-    const d = new Date(lastDay);
-    while (d.getDay() !== 5) d.setDate(d.getDate() - 1);
-    pceDates.push(isoDate(d));
-  }
+  // ── Monthly high-impact events relative to today ─────────────────────────
 
-  // Major earnings (fixed calendar for 2025-2026, based on historical patterns)
-  const earnings = [
-    { date: `${year}-01-29`, ticker: "AAPL",  name: "Apple Q1 Earnings"       },
-    { date: `${year}-01-22`, ticker: "MSFT",  name: "Microsoft Q2 Earnings"   },
-    { date: `${year}-01-29`, ticker: "META",  name: "Meta Q4 Earnings"        },
-    { date: `${year}-02-05`, ticker: "AMZN",  name: "Amazon Q4 Earnings"      },
-    { date: `${year}-02-19`, ticker: "NVDA",  name: "NVIDIA Q4 Earnings"      },
-    { date: `${year}-04-24`, ticker: "MSFT",  name: "Microsoft Q3 Earnings"   },
-    { date: `${year}-04-30`, ticker: "META",  name: "Meta Q1 Earnings"        },
-    { date: `${year}-05-01`, ticker: "AMZN",  name: "Amazon Q1 Earnings"      },
-    { date: `${year}-05-01`, ticker: "AAPL",  name: "Apple Q2 Earnings"       },
-    { date: `${year}-05-28`, ticker: "NVDA",  name: "NVIDIA Q1 Earnings"      },
-    { date: `${year}-07-23`, ticker: "MSFT",  name: "Microsoft Q4 Earnings"   },
-    { date: `${year}-07-30`, ticker: "META",  name: "Meta Q2 Earnings"        },
-    { date: `${year}-07-31`, ticker: "AMZN",  name: "Amazon Q2 Earnings"      },
-    { date: `${year}-07-31`, ticker: "AAPL",  name: "Apple Q3 Earnings"       },
-    { date: `${year}-08-27`, ticker: "NVDA",  name: "NVIDIA Q2 Earnings"      },
-    { date: `${year}-10-22`, ticker: "MSFT",  name: "Microsoft Q1 FY26 Earnings"},
-    { date: `${year}-10-29`, ticker: "META",  name: "Meta Q3 Earnings"        },
-    { date: `${year}-10-30`, ticker: "AMZN",  name: "Amazon Q3 Earnings"      },
-    { date: `${year}-10-30`, ticker: "AAPL",  name: "Apple Q4 Earnings"       },
-    { date: `${year}-11-19`, ticker: "NVDA",  name: "NVIDIA Q3 Earnings"      },
+  // FOMC Rate Decision — place 12 days out on a Wednesday (simulate 6-week cycle)
+  const fomcBase = nextDow(addDays(today, 12), 3);
+  events.push({
+    id: "fomc-0",
+    date: isoDate(fomcBase),
+    title: "FOMC Rate Decision",
+    type: "macro",
+    category: "FOMC",
+    impact: "high",
+    description: "Federal Open Market Committee interest rate decision, statement, and press conference.",
+  });
+  // Next cycle ~6 weeks later
+  events.push({
+    id: "fomc-1",
+    date: isoDate(addDays(fomcBase, 42)),
+    title: "FOMC Rate Decision",
+    type: "macro",
+    category: "FOMC",
+    impact: "high",
+    description: "Federal Open Market Committee interest rate decision, statement, and press conference.",
+  });
+
+  // Core CPI — second Wednesday of next month approximation (today + 18–22 days)
+  const cpiDate = nextDow(addDays(today, 14), 3);
+  events.push({
+    id: "cpi-0",
+    date: isoDate(cpiDate),
+    title: "Core CPI Inflation",
+    type: "macro",
+    category: "CPI",
+    impact: "high",
+    description: "US Consumer Price Index ex-food & energy — Fed's primary inflation signal.",
+  });
+  events.push({
+    id: "cpi-1",
+    date: isoDate(addDays(cpiDate, 30)),
+    title: "Core CPI Inflation",
+    type: "macro",
+    category: "CPI",
+    impact: "high",
+    description: "US Consumer Price Index ex-food & energy — Fed's primary inflation signal.",
+  });
+
+  // Non-Farm Payrolls — first Friday of next month approximation
+  const nfpDate = nextDow(addDays(today, 8), 5);
+  events.push({
+    id: "nfp-0",
+    date: isoDate(nfpDate),
+    title: "Non-Farm Payrolls",
+    type: "macro",
+    category: "NFP",
+    impact: "high",
+    description: "Monthly US employment report — closely tracked by the Fed for policy decisions.",
+  });
+  events.push({
+    id: "nfp-1",
+    date: isoDate(addDays(nfpDate, 30)),
+    title: "Non-Farm Payrolls",
+    type: "macro",
+    category: "NFP",
+    impact: "high",
+    description: "Monthly US employment report — closely tracked by the Fed for policy decisions.",
+  });
+
+  // PCE Price Index — last Friday approx (today + 25 days)
+  const pceDate = nextDow(addDays(today, 22), 5);
+  events.push({
+    id: "pce-0",
+    date: isoDate(pceDate),
+    title: "PCE Price Index",
+    type: "macro",
+    category: "PCE",
+    impact: "high",
+    description: "Personal Consumption Expenditures — the Fed's preferred inflation gauge.",
+  });
+
+  // GDP Advance Estimate — quarterly, next occurrence ~today + 35 days on a Thursday
+  const gdpDate = nextDow(addDays(today, 35), 4);
+  events.push({
+    id: "gdp-0",
+    date: isoDate(gdpDate),
+    title: "GDP Growth Rate (Advance)",
+    type: "macro",
+    category: "GDP",
+    impact: "medium",
+    description: "First estimate of US GDP growth for the most recent quarter.",
+  });
+
+  // ISM Manufacturing PMI — first business day of each month
+  const ismDate = nextDow(addDays(today, 5), 1);
+  events.push({
+    id: "ism-0",
+    date: isoDate(ismDate),
+    title: "ISM Manufacturing PMI",
+    type: "macro",
+    category: "PMI",
+    impact: "medium",
+    description: "Institute for Supply Management monthly survey of manufacturing activity.",
+  });
+
+  // Consumer Confidence — last Tuesday of the month
+  const confDate = nextDow(addDays(today, 20), 2);
+  events.push({
+    id: "conf-0",
+    date: isoDate(confDate),
+    title: "CB Consumer Confidence",
+    type: "macro",
+    category: "CONF",
+    impact: "medium",
+    description: "Conference Board monthly survey of US consumer economic sentiment.",
+  });
+
+  // ── Earnings — scatter across next 60 days ───────────────────────────────
+  const earningSchedule = [
+    { offset: 1,  ticker: "NVDA", name: "NVIDIA Earnings" },
+    { offset: 3,  ticker: "MSFT", name: "Microsoft Earnings" },
+    { offset: 5,  ticker: "AAPL", name: "Apple Earnings" },
+    { offset: 9,  ticker: "META", name: "Meta Platforms Earnings" },
+    { offset: 12, ticker: "AMZN", name: "Amazon Earnings" },
+    { offset: 18, ticker: "GOOG", name: "Alphabet Earnings" },
+    { offset: 25, ticker: "TSLA", name: "Tesla Earnings" },
+    { offset: 33, ticker: "JPM",  name: "JPMorgan Chase Earnings" },
+    { offset: 40, ticker: "BRK",  name: "Berkshire Hathaway Earnings" },
+    { offset: 48, ticker: "NVDA", name: "NVIDIA Earnings (Next Qtr)" },
   ];
 
-  // Assemble macro events
-  const macroEvents = [
-    ...fomcDates.map((d) => ({
-      date: d, type: "macro", category: "FOMC",
-      title: "FOMC Rate Decision",
-      impact: "high",
-      description: "Federal Open Market Committee interest rate decision and statement.",
-    })),
-    ...cpiDates.map((d) => ({
-      date: d, type: "macro", category: "CPI",
-      title: "CPI Inflation Data",
-      impact: "high",
-      description: "US Consumer Price Index — key Fed inflation gauge.",
-    })),
-    ...nfpDates.map((d) => ({
-      date: d, type: "macro", category: "NFP",
-      title: "Non-Farm Payrolls",
-      impact: "high",
-      description: "Monthly US employment report from the BLS.",
-    })),
-    ...gdpDates.map((d) => ({
-      date: d, type: "macro", category: "GDP",
-      title: "GDP Growth Rate",
+  earningSchedule.forEach(({ offset, ticker, name }, i) => {
+    // Shift to nearest weekday
+    let d = addDays(today, offset);
+    const dow = d.getUTCDay();
+    if (dow === 0) d = addDays(d, 1); // Sun → Mon
+    if (dow === 6) d = addDays(d, 2); // Sat → Mon
+    events.push({
+      id: `earn-${i}`,
+      date: isoDate(d),
+      title: name,
+      ticker,
+      type: "earnings",
+      category: "EARNINGS",
       impact: "medium",
-      description: "Advance/revised estimate of US GDP growth.",
-    })),
-    ...pceDates.map((d) => ({
-      date: d, type: "macro", category: "PCE",
-      title: "PCE Price Index",
-      impact: "medium",
-      description: "Fed's preferred inflation measure — Personal Consumption Expenditures.",
-    })),
-    ...earnings.map((e) => ({
-      date: e.date, type: "earnings", category: "EARNINGS",
-      title: e.name,
-      ticker: e.ticker,
-      impact: "medium",
-      description: `${e.name} — after market close unless noted.`,
-    })),
-  ];
+      description: `${name} — after market close unless otherwise noted.`,
+    });
+  });
 
-  // Sort by date
-  macroEvents.sort((a, b) => a.date.localeCompare(b.date));
-
-  // Filter: only upcoming (from today - 1 day)
-  const cutoff = isoDate(addDays(now, -1));
-  const upcoming = macroEvents.filter((e) => e.date >= cutoff).slice(0, 60);
+  // Sort chronologically
+  events.sort((a, b) => a.date.localeCompare(b.date));
 
   return NextResponse.json(
-    { events: upcoming, generatedAt: now.toISOString() },
+    { events, generatedAt: now.toISOString() },
     { headers: { "Cache-Control": "public, s-maxage=3600" } }
   );
 }
