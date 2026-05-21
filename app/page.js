@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Header from "./components/Header";
 import MarketTicker from "./components/MarketTicker";
 import PortfolioBuilder from "./components/PortfolioBuilder";
@@ -8,6 +8,7 @@ import ProjectionChart from "./components/ProjectionChart";
 import ResearchReport from "./components/ResearchReport";
 import NewsFeed from "./components/NewsFeed";
 import CorrelationMatrix from "./components/CorrelationMatrix";
+import EconomicCalendar from "./components/EconomicCalendar";
 import {
   computeAssetMetrics,
   computePortfolioMetrics,
@@ -24,6 +25,20 @@ import {
 export default function Home() {
   const [assets, setAssets]   = useState([]);
   const [weights, setWeights] = useState({});
+
+  // ── Live Risk-Free Rate (13-week T-Bill via ^IRX) ───────────────
+  const [riskFreeRate, setRiskFreeRate] = useState(0.045); // fallback
+
+  useEffect(() => {
+    fetch("/api/risk-free-rate")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.rate != null && isFinite(d.rate)) {
+          setRiskFreeRate(d.rate);
+        }
+      })
+      .catch(() => {}); // silently keep fallback
+  }, []);
 
   // ── Derived state ──────────────────────────────────────────
 
@@ -63,9 +78,9 @@ export default function Home() {
 
   const metrics = useMemo(
     () => allMetricsReady && isAllocationValid
-      ? computePortfolioMetrics(assetMetricsMap, normalizedWeights)
+      ? computePortfolioMetrics(assetMetricsMap, normalizedWeights, riskFreeRate)
       : null,
-    [allMetricsReady, isAllocationValid, assetMetricsMap, normalizedWeights]
+    [allMetricsReady, isAllocationValid, assetMetricsMap, normalizedWeights, riskFreeRate]
   );
 
   const research = useMemo(
@@ -152,7 +167,7 @@ export default function Home() {
       {/* ── LEFT: Fixed News Sidebar ── */}
       <NewsFeed />
 
-      {/* ── RIGHT: Scrollable workspace ── */}
+      {/* ── CENTER: Scrollable workspace ── */}
       <div
         style={{
           flex: 1,
@@ -165,7 +180,7 @@ export default function Home() {
       >
         {/* Sticky top bar (Header + Ticker) */}
         <div style={{ position: "sticky", top: 0, zIndex: 30 }}>
-          <Header />
+          <Header riskFreeRate={riskFreeRate} />
           <MarketTicker />
         </div>
 
@@ -250,6 +265,9 @@ export default function Home() {
           </p>
         </footer>
       </div>
+
+      {/* ── RIGHT: Economic Calendar Sidebar ── */}
+      <EconomicCalendar />
     </div>
   );
 }
