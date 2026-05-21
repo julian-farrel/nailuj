@@ -278,3 +278,14 @@ input[type="number"] {
     linear-gradient(90deg, rgba(30, 42, 90, 0.15) 1px, transparent 1px);
   background-size: 40px 40px;
 }
+
+/* Infinite Marquee Animation */
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+

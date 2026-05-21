@@ -1,19 +1,22 @@
 "use client";
 import { useState, useMemo, useCallback } from "react";
 import Header from "./components/Header";
+import MarketTicker from "./components/MarketTicker";
 import PortfolioBuilder from "./components/PortfolioBuilder";
 import MetricsPanel from "./components/MetricsPanel";
 import ProjectionChart from "./components/ProjectionChart";
 import ResearchReport from "./components/ResearchReport";
+import NewsFeed from "./components/NewsFeed";
 import {
   computeAssetMetrics,
   computePortfolioMetrics,
   generateResearchSummary,
 } from "@/lib/analytics";
 import {
-  autoNormalizeWeights,
-  addAssetAndRebalance,
-  removeAssetAndRebalance,
+  setWeight,
+  addAsset,
+  removeAsset,
+  getAllocationStatus,
 } from "@/lib/portfolioUtils";
 
 export default function Home() {
@@ -44,6 +47,12 @@ export default function Home() {
     [weights, assetMetricsMap]
   );
 
+  // Gate analytics on BOTH all metrics loaded AND exactly 100% allocated
+  const { isValid: isAllocationValid } = useMemo(
+    () => getAllocationStatus(weights),
+    [weights]
+  );
+
   // Normalized to decimals for the analytics engine
   const normalizedWeights = useMemo(() => {
     const nw = {};
@@ -52,10 +61,10 @@ export default function Home() {
   }, [weights]);
 
   const metrics = useMemo(
-    () => allMetricsReady
+    () => allMetricsReady && isAllocationValid
       ? computePortfolioMetrics(assetMetricsMap, normalizedWeights)
       : null,
-    [allMetricsReady, assetMetricsMap, normalizedWeights]
+    [allMetricsReady, isAllocationValid, assetMetricsMap, normalizedWeights]
   );
 
   const research = useMemo(
@@ -74,7 +83,7 @@ export default function Home() {
       { ticker, name, type, metrics: null, loading: true, error: null,
         currentPrice: null, priceChange24h: null, priceChangePercent24h: null, currency: "USD" },
     ]);
-    setWeights((prev) => addAssetAndRebalance(prev, ticker));
+    setWeights((prev) => addAsset(prev, ticker));
 
     // 2. Fetch historical data + quote
     try {
@@ -114,12 +123,12 @@ export default function Home() {
 
   const handleRemoveAsset = useCallback((ticker) => {
     setAssets((prev) => prev.filter((a) => a.ticker !== ticker));
-    setWeights((prev) => removeAssetAndRebalance(prev, ticker));
+    setWeights((prev) => removeAsset(prev, ticker));
   }, []);
 
-  // Auto-normalize: when user changes one weight, proportionally adjust all others
+  // Independent weight update — no rebalancing
   const handleWeightChange = useCallback((ticker, newValue) => {
-    setWeights((prev) => autoNormalizeWeights(prev, ticker, newValue));
+    setWeights((prev) => setWeight(prev, ticker, newValue));
   }, []);
 
   const handleReset = useCallback(() => {
@@ -132,6 +141,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-grid flex flex-col">
       <Header />
+      <MarketTicker />
 
       <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -155,6 +165,7 @@ export default function Home() {
               assetMetricsMap={assetMetricsMap}
               hasAssets={assets.length > 0}
             />
+            <NewsFeed />
           </div>
         </div>
 
