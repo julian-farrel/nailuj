@@ -317,12 +317,110 @@ export default function PortfolioBuilder({
             {assets.map((asset, i) => {
               const weight = weights[asset.ticker] ?? 0;
               const color = SLICE_COLORS[i % SLICE_COLORS.length];
+              const m = asset.metrics;
+
+              // Derived tear-sheet values
+              const beta     = m ? m.beta.toFixed(2)                    : "—";
+              const vol      = m ? (m.volatility  * 100).toFixed(1) + "%" : "—";
+              const maxDD    = m ? (m.maxDrawdown  * 100).toFixed(1) + "%" : "—";
+              const ret      = m ? (m.expectedReturn * 100).toFixed(1) + "%" : "—";
+
+              // Mini trend based on 24h change
+              const chg = asset.priceChangePercent24h;
+              const trendLabel = chg == null ? "—"
+                : chg > 1   ? "▲ Bullish"
+                : chg < -1  ? "▼ Bearish"
+                : "→ Neutral";
+              const trendColor = chg == null ? "rgba(255,255,255,0.3)"
+                : chg > 0   ? "#22c55e"
+                : chg < 0   ? "#f87171"
+                : "#94a3b8";
+
               return (
                 <div
                   key={asset.ticker}
-                  className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 items-center px-3 py-2.5 border-b border-border/20 last:border-0 hover:bg-surface-hover/30 transition-colors group"
+                  className="relative grid grid-cols-[1fr_auto_auto_auto] gap-x-3 items-center px-3 py-2.5 border-b border-border/20 last:border-0 hover:bg-surface-hover/30 transition-colors group"
                 >
-                  {/* Ticker + Name */}
+                  {/* ── Tear Sheet Popover ── */}
+                  <div
+                    className="absolute left-0 top-full z-50 pointer-events-none
+                      opacity-0 group-hover:opacity-100
+                      translate-y-1 group-hover:translate-y-0
+                      transition-all duration-200"
+                    style={{ width: "220px" }}
+                  >
+                    <div style={{
+                      background: "rgba(8,14,28,0.97)",
+                      backdropFilter: "blur(20px)",
+                      border: `1px solid ${color}40`,
+                      borderRadius: "12px",
+                      padding: "12px 14px",
+                      boxShadow: `0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px ${color}20`,
+                    }}>
+                      {/* Popover header */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.9)", fontFamily: "monospace" }}>
+                          {asset.ticker}
+                        </span>
+                        <span style={{ fontSize: "9px", color: trendColor, fontFamily: "monospace", marginLeft: "auto" }}>
+                          {trendLabel}
+                        </span>
+                      </div>
+
+                      {/* Stat grid */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "7px" }}>
+                        {[
+                          { label: "Exp. Return", value: ret,   accent: "#00e5ff" },
+                          { label: "Volatility",  value: vol,   accent: "#f59e0b" },
+                          { label: "Beta (β)",    value: beta,  accent: "#a855f7" },
+                          { label: "Max Drawdown",value: maxDD, accent: "#f87171" },
+                        ].map(({ label, value, accent }) => (
+                          <div key={label} style={{
+                            background: "rgba(255,255,255,0.04)",
+                            borderRadius: "7px",
+                            padding: "6px 8px",
+                          }}>
+                            <div style={{ fontSize: "8px", color: "rgba(255,255,255,0.35)", fontFamily: "monospace", marginBottom: "2px" }}>
+                              {label}
+                            </div>
+                            <div style={{ fontSize: "12px", fontWeight: 700, fontFamily: "monospace", color: accent }}>
+                              {value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* 24h change bar */}
+                      {chg != null && (
+                        <div style={{ marginTop: "9px" }}>
+                          <div style={{ fontSize: "8px", color: "rgba(255,255,255,0.3)", fontFamily: "monospace", marginBottom: "4px" }}>
+                            24H CHANGE
+                          </div>
+                          <div style={{
+                            height: "4px", borderRadius: "2px",
+                            background: "rgba(255,255,255,0.07)", overflow: "hidden",
+                          }}>
+                            <div style={{
+                              height: "100%", borderRadius: "2px",
+                              width: `${Math.min(Math.abs(chg) * 10, 100)}%`,
+                              background: chg >= 0 ? "#22c55e" : "#f87171",
+                              transition: "width 0.3s",
+                            }} />
+                          </div>
+                          <div style={{
+                            fontSize: "9px", fontFamily: "monospace",
+                            color: chg >= 0 ? "#22c55e" : "#f87171",
+                            textAlign: "right", marginTop: "3px",
+                          }}>
+                            {chg >= 0 ? "+" : ""}{chg.toFixed(2)}%
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Ticker + Name ── */}
                   <div className="flex items-center gap-2 min-w-0">
                     <span
                       className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -330,7 +428,9 @@ export default function PortfolioBuilder({
                     />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold font-mono text-foreground">{asset.ticker}</span>
+                        <span className="text-xs font-bold font-mono text-foreground cursor-default">
+                          {asset.ticker}
+                        </span>
                         {asset.loading && (
                           <Loader2 className="w-3 h-3 text-accent animate-spin" />
                         )}

@@ -7,10 +7,12 @@ import MetricsPanel from "./components/MetricsPanel";
 import ProjectionChart from "./components/ProjectionChart";
 import ResearchReport from "./components/ResearchReport";
 import NewsFeed from "./components/NewsFeed";
+import CorrelationMatrix from "./components/CorrelationMatrix";
 import {
   computeAssetMetrics,
   computePortfolioMetrics,
   generateResearchSummary,
+  calcDailyReturns,
 } from "@/lib/analytics";
 import {
   setWeight,
@@ -20,18 +22,19 @@ import {
 } from "@/lib/portfolioUtils";
 
 export default function Home() {
-  // assets: [{
-  //   ticker, name, type,
-  //   metrics: { expectedReturn, volatility, downsideDeviation, beta, maxDrawdown },
-  //   loading, error,
-  //   currentPrice, priceChange24h, priceChangePercent24h, currency
-  // }]
-  const [assets, setAssets] = useState([]);
-
-  // weights: { ticker: number (0-100) } — always auto-normalized to 100
+  const [assets, setAssets]   = useState([]);
   const [weights, setWeights] = useState({});
 
   // ── Derived state ──────────────────────────────────────────
+
+  // Map of ticker → raw daily returns array (for correlation matrix)
+  const dailyReturnsMap = useMemo(() => {
+    const map = {};
+    for (const a of assets) {
+      if (a._rawPrices) map[a.ticker] = calcDailyReturns(a._rawPrices);
+    }
+    return map;
+  }, [assets]);
 
   const assetMetricsMap = useMemo(() => {
     const map = {};
@@ -47,13 +50,11 @@ export default function Home() {
     [weights, assetMetricsMap]
   );
 
-  // Gate analytics on BOTH all metrics loaded AND exactly 100% allocated
   const { isValid: isAllocationValid } = useMemo(
     () => getAllocationStatus(weights),
     [weights]
   );
 
-  // Normalized to decimals for the analytics engine
   const normalizedWeights = useMemo(() => {
     const nw = {};
     for (const [k, v] of Object.entries(weights)) nw[k] = v / 100;
@@ -77,7 +78,6 @@ export default function Home() {
   // ── Asset Actions ──────────────────────────────────────────
 
   const handleAddAsset = useCallback(async (ticker, name, type) => {
-    // 1. Immediately add asset card with loading state + rebalanced weights
     setAssets((prev) => [
       ...prev,
       { ticker, name, type, metrics: null, loading: true, error: null,
@@ -85,16 +85,17 @@ export default function Home() {
     ]);
     setWeights((prev) => addAsset(prev, ticker));
 
-    // 2. Fetch historical data + quote
     try {
-      const res = await fetch(`/api/historical?ticker=${encodeURIComponent(ticker)}`);
+      const res  = await fetch(`/api/historical?ticker=${encodeURIComponent(ticker)}`);
       const data = await res.json();
 
       if (!res.ok || data.error) throw new Error(data.error || "Failed to fetch data");
 
-      const assetPrices = data.assetPrices.map((d) => d.close);
-      const spyPrices = data.spyPrices.map((d) => d.close);
+      const assetPrices   = data.assetPrices.map((d) => d.close);
+      const spyPrices     = data.spyPrices.map((d) => d.close);
       const computedMetrics = computeAssetMetrics(assetPrices, spyPrices);
+      // Store raw prices so CorrelationMatrix can compute daily returns
+      const rawPrices = assetPrices;
 
       setAssets((prev) =>
         prev.map((a) =>
@@ -102,6 +103,7 @@ export default function Home() {
             ? {
                 ...a,
                 metrics: computedMetrics,
+                _rawPrices: rawPrices,
                 loading: false,
                 error: null,
                 currentPrice: data.currentPrice ?? null,
@@ -126,7 +128,6 @@ export default function Home() {
     setWeights((prev) => removeAsset(prev, ticker));
   }, []);
 
-  // Independent weight update — no rebalancing
   const handleWeightChange = useCallback((ticker, newValue) => {
     setWeights((prev) => setWeight(prev, ticker, newValue));
   }, []);
@@ -139,56 +140,116 @@ export default function Home() {
   // ── Render ─────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-grid flex flex-col">
-      <Header />
-      <MarketTicker />
+    // Outermost: full-screen flex row, no overflow
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        overflow: "hidden",
+        background: "var(--color-background, #060d1a)",
+      }}
+    >
+      {/* ── LEFT: Fixed News Sidebar ── */}
+      <NewsFeed />
 
-      <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left: Portfolio Builder */}
-          <div className="lg:col-span-5">
-            <PortfolioBuilder
-              assets={assets}
-              weights={weights}
-              onAddAsset={handleAddAsset}
-              onRemoveAsset={handleRemoveAsset}
-              onWeightChange={handleWeightChange}
-              onReset={handleReset}
-            />
-          </div>
-
-          {/* Right: Analytics */}
-          <div className="lg:col-span-7 space-y-6">
-            <MetricsPanel metrics={metrics} hasAssets={assets.length > 0} />
-            <ProjectionChart
-              portfolioReturn={metrics?.expectedReturn ?? null}
-              assetMetricsMap={assetMetricsMap}
-              hasAssets={assets.length > 0}
-            />
-            <NewsFeed />
-          </div>
+      {/* ── RIGHT: Scrollable workspace ── */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          overflowY: "auto",
+          overflowX: "hidden",
+          minWidth: 0,
+        }}
+      >
+        {/* Sticky top bar (Header + Ticker) */}
+        <div style={{ position: "sticky", top: 0, zIndex: 30 }}>
+          <Header />
+          <MarketTicker />
         </div>
 
-        {/* Research Report — contains the Export PDF button */}
-        {metrics && !anyLoading && (
-          <ResearchReport
-            research={research}
-            assets={assets}
-            weights={weights}
-            metrics={metrics}
-          />
-        )}
-      </main>
+        {/* Main content */}
+        <main style={{ flex: 1, padding: "28px 28px 0", minWidth: 0 }}>
+          {/* Primary grid: Portfolio Builder | Analytics stack */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))",
+              gap: "24px",
+              alignItems: "start",
+            }}
+          >
+            {/* Portfolio Builder */}
+            <div style={{ minWidth: 0 }}>
+              <PortfolioBuilder
+                assets={assets}
+                weights={weights}
+                onAddAsset={handleAddAsset}
+                onRemoveAsset={handleRemoveAsset}
+                onWeightChange={handleWeightChange}
+                onReset={handleReset}
+              />
+            </div>
 
-      {/* Footer (Full Width) */}
-      <footer className="w-full border-t border-border/30 bg-background/50 backdrop-blur-sm pt-6 pb-8 px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p className="text-[11px] font-mono text-muted/50">
-          © {new Date().getFullYear()} Meridian Capital Partners, LLC. All rights reserved.
-        </p>
-        <p className="text-[11px] font-mono text-muted/50">
-          Institutional Use Only — Not For Redistribution
-        </p>
-      </footer>
+            {/* Analytics stack */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
+              <MetricsPanel metrics={metrics} hasAssets={assets.length > 0} />
+              <ProjectionChart
+                portfolioReturn={metrics?.expectedReturn ?? null}
+                assetMetricsMap={assetMetricsMap}
+                hasAssets={assets.length > 0}
+              />
+            </div>
+          </div>
+
+          {/* Correlation Matrix — visible as soon as 2+ assets have data */}
+          {assets.filter((a) => a._rawPrices).length >= 2 && (
+            <div style={{ marginTop: "24px" }}>
+              <CorrelationMatrix
+                assets={assets.filter((a) => a._rawPrices)}
+                assetDailyReturns={dailyReturnsMap}
+              />
+            </div>
+          )}
+
+          {/* Research Report */}
+          {metrics && !anyLoading && (
+            <div style={{ marginTop: "24px" }}>
+              <ResearchReport
+                research={research}
+                assets={assets}
+                weights={weights}
+                metrics={metrics}
+              />
+            </div>
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer
+          style={{
+            width: "100%",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(6,13,26,0.5)",
+            backdropFilter: "blur(8px)",
+            padding: "18px 28px",
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+            marginTop: "32px",
+          }}
+        >
+          <p style={{ fontSize: "10px", fontFamily: "monospace", color: "rgba(255,255,255,0.22)", margin: 0 }}>
+            © {new Date().getFullYear()} Nailuj Terminal. All rights reserved.
+          </p>
+          <p style={{ fontSize: "10px", fontFamily: "monospace", color: "rgba(255,255,255,0.22)", margin: 0 }}>
+            Institutional Use Only — Not For Redistribution
+          </p>
+        </footer>
+      </div>
     </div>
   );
 }

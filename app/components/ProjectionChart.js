@@ -2,10 +2,62 @@
 import { useMemo, useState } from "react";
 import {
   Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer,
-  Tooltip, XAxis, YAxis
+  Tooltip, XAxis, YAxis, ReferenceLine,
 } from "recharts";
 import { generateProjectionData } from "@/lib/analytics";
-import { Calendar, DollarSign, TrendingUp, LineChart } from "lucide-react";
+import { Calendar, DollarSign, TrendingUp, LineChart, AlertTriangle } from "lucide-react";
+
+// ── Scenario config ─────────────────────────────────────────
+const SCENARIOS = [
+  { key: "base",   label: "Standard",          drawdown: 0,     color: null },
+  { key: "2008",   label: "2008 Crisis",        drawdown: -0.35, color: "#f59e0b" },
+  { key: "covid",  label: "COVID-19 Shock",     drawdown: -0.20, color: "#f87171" },
+];
+
+/**
+ * Given an immediate shock (drawdown fraction applied via portfolio beta)
+ * and a recovery period (12 months), generate a 1-year forward projection
+ * overlay starting from the last data point of the base series.
+ */
+function generateStressOverlay(baseData, portfolioBeta, drawdown, annualReturn, INITIAL) {
+  if (!drawdown || drawdown === 0 || !baseData.length) return [];
+
+  const lastPoint   = baseData[baseData.length - 1];
+  const startValue  = lastPoint.portfolio;
+  const startMonth  = lastPoint.month;
+
+  // Beta-adjusted shock: shock = drawdown * beta, floored at -90%
+  const shock       = Math.max(drawdown * Math.min(portfolioBeta, 3), -0.9);
+  const trough      = startValue * (1 + shock);
+
+  // Months to trough: 4 months for 2008-style, 2 for COVID
+  const troughMonth = Math.abs(drawdown) > 0.25 ? 4 : 2;
+  // Recovery to base trajectory: assume 12 months total window
+  const totalMonths = 12;
+
+  const monthly = Math.pow(1 + annualReturn, 1 / 12) - 1;
+  const overlay  = [];
+
+  for (let dm = 0; dm <= totalMonths; dm++) {
+    let val;
+    if (dm <= troughMonth) {
+      // Linear drawdown to trough
+      const pct = dm / troughMonth;
+      val = startValue + (trough - startValue) * pct;
+    } else {
+      // Recovery: compound from trough
+      const recoveryMonths = dm - troughMonth;
+      val = trough * Math.pow(1 + monthly, recoveryMonths);
+    }
+    overlay.push({
+      month: startMonth + dm,
+      year:  +((startMonth + dm) / 12).toFixed(1),
+      stress: Math.round(val),
+    });
+  }
+
+  return overlay;
+}
 
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -29,7 +81,6 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-// Premium empty-state when no assets have been added
 function ChartEmptyState() {
   return (
     <section className="glass-card p-6 animate-fade-in-up">
@@ -46,10 +97,7 @@ function ChartEmptyState() {
           ))}
         </div>
       </div>
-
-      {/* Decorative ghost chart */}
       <div className="relative h-[300px] flex flex-col items-center justify-center">
-        {/* Faded fake chart lines */}
         <div className="absolute inset-0 flex items-end px-4 pb-8 gap-[3%] opacity-[0.06] pointer-events-none">
           {Array.from({ length: 20 }).map((_, i) => (
             <div
@@ -59,8 +107,6 @@ function ChartEmptyState() {
             />
           ))}
         </div>
-
-        {/* Center prompt */}
         <div className="relative z-10 text-center">
           <div className="w-16 h-16 rounded-2xl bg-surface-elevated border border-border/50 flex items-center justify-center mx-auto mb-4">
             <LineChart className="w-7 h-7 text-muted/25" />
@@ -87,7 +133,6 @@ function ChartEmptyState() {
   );
 }
 
-// Loading state while data is fetching
 function ChartLoadingState() {
   return (
     <section className="glass-card p-6 animate-fade-in-up">
@@ -114,26 +159,27 @@ export default function ProjectionChart({
   assetMetricsMap = {},
   hasAssets = false,
 }) {
-  const [horizon, setHorizon] = useState(5);
+  const [horizon,  setHorizon]  = useState(5);
+  const [scenario, setScenario] = useState("base");
   const INITIAL = 100000;
 
-  // Show empty state if no assets selected
-  if (!hasAssets) return <ChartEmptyState />;
-
-  // Show loading if assets are added but return isn't computed yet
+  if (!hasAssets)           return <ChartEmptyState />;
   if (portfolioReturn == null) return <ChartLoadingState />;
 
-  return <ActiveChart
-    portfolioReturn={portfolioReturn}
-    assetMetricsMap={assetMetricsMap}
-    horizon={horizon}
-    setHorizon={setHorizon}
-    INITIAL={INITIAL}
-  />;
+  return (
+    <ActiveChart
+      portfolioReturn={portfolioReturn}
+      assetMetricsMap={assetMetricsMap}
+      horizon={horizon}
+      setHorizon={setHorizon}
+      scenario={scenario}
+      setScenario={setScenario}
+      INITIAL={INITIAL}
+    />
+  );
 }
 
-// Extracted so hooks are always called unconditionally
-function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, INITIAL }) {
+function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, scenario, setScenario, INITIAL }) {
   const data = useMemo(
     () => generateProjectionData(portfolioReturn, INITIAL, horizon, assetMetricsMap),
     [portfolioReturn, horizon, assetMetricsMap, INITIAL]
@@ -141,14 +187,48 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, IN
 
   const chartData = data.filter((_, i) => i % 3 === 0 || i === data.length - 1);
 
+  // Portfolio beta for stress scaling
+  const portfolioBeta = useMemo(() => {
+    const entries = Object.entries(assetMetricsMap);
+    if (!entries.length) return 1;
+    return entries.reduce((sum, [, m]) => sum + (m.beta || 1), 0) / entries.length;
+  }, [assetMetricsMap]);
+
+  // Active scenario config
+  const scenarioCfg = SCENARIOS.find((s) => s.key === scenario) || SCENARIOS[0];
+
+  // Stress overlay: 1-year forward from end of base projection
+  const stressData = useMemo(() => {
+    if (scenario === "base" || !data.length) return [];
+    return generateStressOverlay(data, portfolioBeta, scenarioCfg.drawdown, portfolioReturn, INITIAL);
+  }, [scenario, data, portfolioBeta, scenarioCfg, portfolioReturn, INITIAL]);
+
+  // Merge base + stress for unified chart domain
+  const mergedData = useMemo(() => {
+    if (!stressData.length) return chartData;
+    const stressMap = Object.fromEntries(stressData.map((d) => [d.month, d.stress]));
+    const existing  = new Set(chartData.map((d) => d.month));
+    const extra     = stressData
+      .filter((d) => !existing.has(d.month))
+      .map((d) => ({ month: d.month, year: d.year }));
+    const combined  = [...chartData, ...extra].sort((a, b) => a.month - b.month);
+    return combined.map((d) => ({ ...d, stress: stressMap[d.month] ?? undefined }));
+  }, [chartData, stressData]);
+
   const finalPortfolio = data[data.length - 1]?.portfolio || INITIAL;
-  const finalSPY = data[data.length - 1]?.spy || INITIAL;
-  const finalQQQ = data[data.length - 1]?.qqq || INITIAL;
-  const portfolioGain = (((finalPortfolio - INITIAL) / INITIAL) * 100).toFixed(1);
+  const finalSPY       = data[data.length - 1]?.spy  || INITIAL;
+  const finalQQQ       = data[data.length - 1]?.qqq  || INITIAL;
+  const portfolioGain  = (((finalPortfolio - INITIAL) / INITIAL) * 100).toFixed(1);
+
+  // Shock label for badge
+  const shockMagnitude = scenarioCfg.drawdown
+    ? (scenarioCfg.drawdown * Math.min(portfolioBeta, 3) * 100).toFixed(1)
+    : null;
 
   return (
     <section id="projection-chart" className="glass-card p-6 chart-glow animate-fade-in-up">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+      {/* ── Header row ── */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
         <div>
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
             <Calendar className="w-4 h-4 text-accent" />
@@ -158,6 +238,7 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, IN
             Compound growth of $100,000 initial investment
           </p>
         </div>
+        {/* Horizon toggles */}
         <div className="flex items-center gap-2">
           {[5, 10].map((y) => (
             <button
@@ -175,7 +256,52 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, IN
         </div>
       </div>
 
-      {/* Summary badges */}
+      {/* ── Scenario Analysis control bar ── */}
+      <div className="flex flex-wrap items-center gap-2 mb-5 p-3 rounded-xl bg-surface-elevated/50 border border-border/40">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mr-1">
+          Scenario
+        </span>
+        {SCENARIOS.map((s) => {
+          const isActive = scenario === s.key;
+          const accent   = s.color || "#00e5ff";
+          return (
+            <button
+              key={s.key}
+              onClick={() => setScenario(s.key)}
+              style={{
+                borderColor: isActive ? accent : undefined,
+                color:       isActive ? accent : undefined,
+                background:  isActive ? `${accent}15` : undefined,
+                boxShadow:   isActive ? `0 0 12px ${accent}25` : undefined,
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold border transition-all ${
+                isActive
+                  ? "border-current"
+                  : "bg-surface-elevated border-border text-muted-foreground hover:text-foreground hover:border-border-bright"
+              }`}
+            >
+              {s.key !== "base" && <AlertTriangle className="w-3 h-3" />}
+              {s.label}
+            </button>
+          );
+        })}
+
+        {/* Shock magnitude badge */}
+        {shockMagnitude && (
+          <span
+            className="ml-auto text-[10px] font-mono px-2 py-1 rounded-md border"
+            style={{
+              color: scenarioCfg.color,
+              borderColor: `${scenarioCfg.color}40`,
+              background: `${scenarioCfg.color}10`,
+            }}
+          >
+            β-adj shock: {shockMagnitude}%
+          </span>
+        )}
+      </div>
+
+      {/* ── Summary badges ── */}
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-elevated border border-border">
           <DollarSign className="w-3.5 h-3.5 text-accent" />
@@ -195,23 +321,29 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, IN
         </div>
       </div>
 
+      {/* ── Chart ── */}
       <div className="h-[360px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+          <AreaChart data={mergedData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
             <defs>
               <linearGradient id="gradPortfolio" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#00e5ff" stopOpacity={0.2} />
-                <stop offset="100%" stopColor="#00e5ff" stopOpacity={0} />
+                <stop offset="0%"   stopColor="#00e5ff" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#00e5ff" stopOpacity={0}   />
               </linearGradient>
               <linearGradient id="gradSPY" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#64748b" stopOpacity={0.1} />
-                <stop offset="100%" stopColor="#64748b" stopOpacity={0} />
+                <stop offset="0%"   stopColor="#64748b" stopOpacity={0.1} />
+                <stop offset="100%" stopColor="#64748b" stopOpacity={0}   />
               </linearGradient>
               <linearGradient id="gradQQQ" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.1} />
-                <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                <stop offset="0%"   stopColor="#8b5cf6" stopOpacity={0.1} />
+                <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0}   />
+              </linearGradient>
+              <linearGradient id="gradStress" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor={scenarioCfg.color || "#f59e0b"} stopOpacity={0.22} />
+                <stop offset="100%" stopColor={scenarioCfg.color || "#f59e0b"} stopOpacity={0}    />
               </linearGradient>
             </defs>
+
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(30,42,90,0.4)" />
             <XAxis
               dataKey="year"
@@ -229,9 +361,36 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, IN
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: "12px", fontFamily: "Inter", paddingTop: "12px" }} />
-            <Area type="monotone" dataKey="portfolio" name="Your Portfolio" stroke="#00e5ff" strokeWidth={2.5} fill="url(#gradPortfolio)" dot={false} />
-            <Area type="monotone" dataKey="spy" name="S&P 500" stroke="#64748b" strokeWidth={1.5} fill="url(#gradSPY)" dot={false} strokeDasharray="6 3" />
-            <Area type="monotone" dataKey="qqq" name="NASDAQ 100" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#gradQQQ)" dot={false} strokeDasharray="4 4" />
+
+            {/* Base lines */}
+            <Area type="monotone" dataKey="portfolio" name="Your Portfolio" stroke="#00e5ff" strokeWidth={2.5} fill="url(#gradPortfolio)" dot={false} connectNulls />
+            <Area type="monotone" dataKey="spy"       name="S&P 500"        stroke="#64748b" strokeWidth={1.5} fill="url(#gradSPY)"       dot={false} strokeDasharray="6 3" connectNulls />
+            <Area type="monotone" dataKey="qqq"       name="NASDAQ 100"     stroke="#8b5cf6" strokeWidth={1.5} fill="url(#gradQQQ)"       dot={false} strokeDasharray="4 4" connectNulls />
+
+            {/* Stress overlay */}
+            {scenario !== "base" && (
+              <Area
+                type="monotone"
+                dataKey="stress"
+                name={`${scenarioCfg.label} Scenario`}
+                stroke={scenarioCfg.color}
+                strokeWidth={2}
+                strokeDasharray="5 3"
+                fill="url(#gradStress)"
+                dot={false}
+                connectNulls
+              />
+            )}
+
+            {/* Vertical separator at horizon end */}
+            {scenario !== "base" && (
+              <ReferenceLine
+                x={horizon}
+                stroke="rgba(255,255,255,0.12)"
+                strokeDasharray="3 3"
+                label={{ value: "Shock →", fill: "rgba(255,255,255,0.3)", fontSize: 10, fontFamily: "monospace" }}
+              />
+            )}
           </AreaChart>
         </ResponsiveContainer>
       </div>

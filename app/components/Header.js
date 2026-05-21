@@ -11,7 +11,7 @@ export default function Header() {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-foreground">
-              MERIDIAN CAPITAL
+              Nailuj Terminal
             </h1>
             <p className="text-[11px] font-mono text-muted-foreground tracking-widest uppercase">
               Portfolio Analytics Terminal

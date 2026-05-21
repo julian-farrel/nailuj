@@ -72,7 +72,7 @@ export default function ResearchReport({ research, assets, weights, metrics }) {
       </div>
 
       <p className="text-[11px] uppercase tracking-widest text-muted-foreground mb-5 font-mono">
-        Meridian Capital — Quantitative Research Desk
+        Nailuj Terminal — Quantitative Research Desk
       </p>
 
       {/* Error toast */}

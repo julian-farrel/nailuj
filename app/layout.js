@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "Meridian Capital | Institutional Portfolio Analytics",
+  title: "Nailuj Terminal | Institutional Portfolio Analytics",
   description:
     "Institutional-grade hedge fund client portal — quantitative portfolio construction, risk analytics, and forward projections.",
 };
