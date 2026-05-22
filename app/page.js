@@ -23,37 +23,31 @@ import {
 } from "@/lib/portfolioUtils";
 
 export default function Home() {
-  const [assets, setAssets]   = useState([]);
-  const [weights, setWeights] = useState({});
+  const [assets,    setAssets]    = useState([]);
+  const [weights,   setWeights]   = useState({});
   const [preloaded, setPreloaded] = useState(false);
 
-  // ── Live Risk-Free Rate (13-week T-Bill via ^IRX) ───────────────
-  const [riskFreeRate, setRiskFreeRate] = useState(0.045); // fallback
+  // ── Live Risk-Free Rate ─────────────────────────────────────────
+  const [riskFreeRate, setRiskFreeRate] = useState(0.045);
 
   useEffect(() => {
     fetch("/api/risk-free-rate")
       .then((r) => r.json())
-      .then((d) => {
-        if (d.rate != null && isFinite(d.rate)) {
-          setRiskFreeRate(d.rate);
-        }
-      })
-      .catch(() => {}); // silently keep fallback
+      .then((d) => { if (d.rate != null && isFinite(d.rate)) setRiskFreeRate(d.rate); })
+      .catch(() => {});
   }, []);
 
-  // ── Pre-populate 60/40 BTC/ETH benchmark on first mount ─────
+  // ── Pre-populate 60/40 BTC/ETH benchmark ───────────────────────
   useEffect(() => {
     if (preloaded) return;
     setPreloaded(true);
-    handleAddAsset("BTC-USD", "Bitcoin", "crypto");
+    handleAddAsset("BTC-USD", "Bitcoin",  "crypto");
     handleAddAsset("ETH-USD", "Ethereum", "crypto");
     setWeights({ "BTC-USD": 60, "ETH-USD": 40 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preloaded]);
 
-  // ── Derived state ──────────────────────────────────────────
-
-  // Map of ticker → raw daily returns array (for correlation matrix)
+  // ── Derived state ───────────────────────────────────────────────
   const dailyReturnsMap = useMemo(() => {
     const map = {};
     for (const a of assets) {
@@ -64,9 +58,7 @@ export default function Home() {
 
   const assetMetricsMap = useMemo(() => {
     const map = {};
-    for (const a of assets) {
-      if (a.metrics) map[a.ticker] = a.metrics;
-    }
+    for (const a of assets) { if (a.metrics) map[a.ticker] = a.metrics; }
     return map;
   }, [assets]);
 
@@ -101,8 +93,7 @@ export default function Home() {
 
   const anyLoading = assets.some((a) => a.loading);
 
-  // ── Asset Actions ──────────────────────────────────────────
-
+  // ── Asset Actions ───────────────────────────────────────────────
   const handleAddAsset = useCallback(async (ticker, name, type) => {
     setAssets((prev) => [
       ...prev,
@@ -114,14 +105,11 @@ export default function Home() {
     try {
       const res  = await fetch(`/api/historical?ticker=${encodeURIComponent(ticker)}`);
       const data = await res.json();
-
       if (!res.ok || data.error) throw new Error(data.error || "Failed to fetch data");
 
-      const assetPrices   = data.assetPrices.map((d) => d.close);
-      const spyPrices     = data.spyPrices.map((d) => d.close);
+      const assetPrices     = data.assetPrices.map((d) => d.close);
+      const spyPrices       = data.spyPrices.map((d) => d.close);
       const computedMetrics = computeAssetMetrics(assetPrices, spyPrices);
-      // Store raw prices so CorrelationMatrix can compute daily returns
-      const rawPrices = assetPrices;
 
       setAssets((prev) =>
         prev.map((a) =>
@@ -129,7 +117,7 @@ export default function Home() {
             ? {
                 ...a,
                 metrics: computedMetrics,
-                _rawPrices: rawPrices,
+                _rawPrices: assetPrices,
                 loading: false,
                 error: null,
                 currentPrice: data.currentPrice ?? null,
@@ -149,8 +137,8 @@ export default function Home() {
     }
   }, []);
 
-  const handleRemoveAsset = useCallback((ticker) => {
-    setAssets((prev) => prev.filter((a) => a.ticker !== ticker));
+  const handleRemoveAsset  = useCallback((ticker) => {
+    setAssets((prev)  => prev.filter((a) => a.ticker !== ticker));
     setWeights((prev) => removeAsset(prev, ticker));
   }, []);
 
@@ -163,51 +151,36 @@ export default function Home() {
     setWeights({});
   }, []);
 
-  // ── Render ─────────────────────────────────────────────────
+  const assetsWithPrices = assets.filter((a) => a._rawPrices);
+  const showMatrix       = assetsWithPrices.length >= 2;
 
+  // ── Render ──────────────────────────────────────────────────────
   return (
-    // Outermost: full-screen flex row, no overflow
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        overflow: "hidden",
-        background: "var(--color-background, #060d1a)",
-      }}
-    >
-      {/* ── LEFT: Fixed News Sidebar ── */}
+    <div className="flex h-screen overflow-hidden" style={{ background: "var(--color-background, #060d1a)" }}>
+
+      {/* LEFT: News sidebar */}
       <NewsFeed />
 
-      {/* ── CENTER: Scrollable workspace ── */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          overflowY: "auto",
-          overflowX: "hidden",
-          minWidth: 0,
-        }}
-      >
-        {/* Sticky top bar (Header + Ticker) */}
-        <div style={{ position: "sticky", top: 0, zIndex: 30 }}>
+      {/* CENTER: Scrollable 12-col workspace */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+
+        {/* Sticky header + ticker */}
+        <div className="sticky top-0 z-30">
           <Header riskFreeRate={riskFreeRate} />
           <MarketTicker />
         </div>
 
-        {/* Main content */}
-        <main style={{ flex: 1, padding: "28px 28px 0", minWidth: 0 }}>
-          {/* Primary grid: Portfolio Builder | Analytics stack */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))",
-              gap: "24px",
-              alignItems: "start",
-            }}
-          >
-            {/* Portfolio Builder */}
-            <div style={{ minWidth: 0 }}>
+        {/* ── 12-column main grid ── */}
+        <main className="flex-1 p-6 min-w-0">
+          <div className="grid grid-cols-12 gap-6 items-start">
+
+            {/* ROW 1 ── Metrics (full width) */}
+            <div className="col-span-12">
+              <MetricsPanel metrics={metrics} hasAssets={assets.length > 0} />
+            </div>
+
+            {/* ROW 2 ── Portfolio Builder (4 cols) + Projection Chart (8 cols) */}
+            <div className="col-span-12 xl:col-span-4 min-w-0">
               <PortfolioBuilder
                 assets={assets}
                 weights={weights}
@@ -218,67 +191,53 @@ export default function Home() {
               />
             </div>
 
-            {/* Analytics stack */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
-              <MetricsPanel metrics={metrics} hasAssets={assets.length > 0} />
+            <div className="col-span-12 xl:col-span-8 min-w-0">
               <ProjectionChart
                 portfolioReturn={metrics?.expectedReturn ?? null}
                 assetMetricsMap={assetMetricsMap}
                 hasAssets={assets.length > 0}
               />
             </div>
+
+            {/* ROW 3 ── Correlation Matrix (6 cols) + Research Report (6 cols) */}
+            {showMatrix && (
+              <div className="col-span-12 xl:col-span-6 min-w-0">
+                <CorrelationMatrix
+                  assets={assetsWithPrices}
+                  assetDailyReturns={dailyReturnsMap}
+                />
+              </div>
+            )}
+
+            {metrics && !anyLoading && (
+              <div className={`min-w-0 ${showMatrix ? "col-span-12 xl:col-span-6" : "col-span-12"}`}>
+                <ResearchReport
+                  research={research}
+                  assets={assets}
+                  weights={weights}
+                  metrics={metrics}
+                />
+              </div>
+            )}
+
           </div>
-
-          {/* Correlation Matrix — visible as soon as 2+ assets have data */}
-          {assets.filter((a) => a._rawPrices).length >= 2 && (
-            <div style={{ marginTop: "24px" }}>
-              <CorrelationMatrix
-                assets={assets.filter((a) => a._rawPrices)}
-                assetDailyReturns={dailyReturnsMap}
-              />
-            </div>
-          )}
-
-          {/* Research Report */}
-          {metrics && !anyLoading && (
-            <div style={{ marginTop: "24px" }}>
-              <ResearchReport
-                research={research}
-                assets={assets}
-                weights={weights}
-                metrics={metrics}
-              />
-            </div>
-          )}
         </main>
 
         {/* Footer */}
-        <footer
-          style={{
-            width: "100%",
-            borderTop: "1px solid rgba(255,255,255,0.06)",
-            background: "rgba(6,13,26,0.5)",
-            backdropFilter: "blur(8px)",
-            padding: "18px 28px",
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "8px",
-            marginTop: "32px",
-          }}
-        >
-          <p style={{ fontSize: "10px", fontFamily: "monospace", color: "rgba(255,255,255,0.22)", margin: 0 }}>
+        <footer className="w-full border-t border-white/[0.06] bg-[rgba(6,13,26,0.5)] backdrop-blur-sm px-6 py-4 flex items-center justify-between mt-6">
+          <p className="text-[10px] font-mono text-white/20 m-0">
             © {new Date().getFullYear()} Nailuj Terminal. All rights reserved.
           </p>
-          <p style={{ fontSize: "10px", fontFamily: "monospace", color: "rgba(255,255,255,0.22)", margin: 0 }}>
+          <p className="text-[10px] font-mono text-white/20 m-0">
             Institutional Use Only — Not For Redistribution
           </p>
         </footer>
+
       </div>
 
-      {/* ── RIGHT: Whale Alerts Sidebar ── */}
+      {/* RIGHT: Whale Alerts sidebar */}
       <WhaleAlerts />
+
     </div>
   );
 }

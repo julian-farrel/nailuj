@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import {
-  TrendingUp, TrendingDown, Activity, BarChart3, AlertTriangle, Zap, X, Info
+  TrendingUp, TrendingDown, Activity, BarChart3,
+  AlertTriangle, Zap, X, Info,
 } from "lucide-react";
 
 const METRIC_CONFIG = [
@@ -10,9 +11,9 @@ const METRIC_CONFIG = [
     label: "Expected Return",
     format: "pct",
     icon: TrendingUp,
-    color: "text-accent-green",
-    borderColor: "border-accent-green/20",
-    bgGlow: "rgba(0,255,135,0.04)",
+    color: "#00ff87",
+    borderColor: "border-[#00ff87]/30",
+    bgGlow: "rgba(0,255,135,0.05)",
     formula: "E[Rₚ] = Σ (wᵢ × E[Rᵢ])",
     formulaDesc: "Weighted average of individual asset expected returns, annualized from daily means × 252 trading days.",
     good: "Higher is better. A value above 10% suggests the portfolio outpaces typical fixed-income alternatives.",
@@ -22,11 +23,11 @@ const METRIC_CONFIG = [
     label: "Volatility",
     format: "pct",
     icon: Activity,
-    color: "text-accent-amber",
-    borderColor: "border-accent-amber/20",
-    bgGlow: "rgba(255,185,0,0.04)",
+    color: "#ffb900",
+    borderColor: "border-[#ffb900]/30",
+    bgGlow: "rgba(255,185,0,0.05)",
     formula: "σₚ = √(Σ wᵢ²σᵢ² + Σᵢ≠ⱼ wᵢwⱼρσᵢσⱼ)",
-    formulaDesc: "Portfolio standard deviation with cross-asset correlations (ρ = 0.3 avg). Annualized from daily returns × √252.",
+    formulaDesc: "Portfolio standard deviation with cross-asset correlations. Annualized from daily returns × √252.",
     good: "Lower is better. Institutional portfolios typically target 12–18%. Above 25% signals elevated risk.",
   },
   {
@@ -34,44 +35,44 @@ const METRIC_CONFIG = [
     label: "Sharpe Ratio",
     format: "dec",
     icon: Zap,
-    color: "text-accent",
-    borderColor: "border-accent/20",
-    bgGlow: "rgba(0,229,255,0.04)",
+    color: "#00e5ff",
+    borderColor: "border-[#00e5ff]/30",
+    bgGlow: "rgba(0,229,255,0.05)",
     formula: "S = (Rₚ − Rf) / σₚ",
-    formulaDesc: "Excess return per unit of total risk. Rf = 4.5% (risk-free rate). σₚ = portfolio volatility.",
-    good: "Higher is better. > 1.0 is strong, > 1.5 is exceptional. Below 0.5 indicates poor risk-adjusted returns.",
+    formulaDesc: "Excess return per unit of total risk. Rf = live 13-week T-Bill rate. σₚ = portfolio volatility.",
+    good: "> 1.0 is strong, > 1.5 is exceptional. Below 0.5 indicates poor risk-adjusted returns.",
   },
   {
     key: "sortinoRatio",
     label: "Sortino Ratio",
     format: "dec",
     icon: BarChart3,
-    color: "text-accent-purple",
-    borderColor: "border-accent-purple/20",
-    bgGlow: "rgba(168,85,247,0.04)",
+    color: "#a855f7",
+    borderColor: "border-[#a855f7]/30",
+    bgGlow: "rgba(168,85,247,0.05)",
     formula: "So = (Rₚ − Rf) / σ_down",
-    formulaDesc: "Like Sharpe, but penalizes only downside volatility — the std dev of negative returns only.",
-    good: "Higher is better. > 1.0 is favorable, > 2.0 is excellent. More relevant than Sharpe for asymmetric return profiles.",
+    formulaDesc: "Like Sharpe, but penalises only downside volatility — the std dev of negative returns only.",
+    good: "> 1.0 is favorable, > 2.0 is excellent. More relevant than Sharpe for asymmetric return profiles.",
   },
   {
     key: "maxDrawdown",
     label: "Max Drawdown",
     format: "pct",
     icon: TrendingDown,
-    color: "text-accent-red",
-    borderColor: "border-accent-red/20",
-    bgGlow: "rgba(255,56,96,0.04)",
+    color: "#ff3860",
+    borderColor: "border-[#ff3860]/30",
+    bgGlow: "rgba(255,56,96,0.05)",
     formula: "MDD = min((Pₜ − Peak) / Peak)",
-    formulaDesc: "Largest historical peak-to-trough decline in portfolio value. Weighted average of individual asset drawdowns.",
-    good: "Closer to 0% is better. Beyond −30% warrants tail-risk hedging. Beyond −50% signals extreme capital risk.",
+    formulaDesc: "Largest historical peak-to-trough decline. Weighted average of individual asset drawdowns.",
+    good: "Closer to 0% is better. Beyond −30% warrants tail-risk hedging. Beyond −50% signals extreme risk.",
   },
   {
     key: "beta",
     label: "Portfolio Beta",
     format: "dec",
     icon: AlertTriangle,
-    color: "text-muted-foreground",
-    borderColor: "border-border",
+    color: "#94a3b8",
+    borderColor: "border-white/10",
     bgGlow: "rgba(148,163,184,0.04)",
     formula: "β = Cov(Rₐ, Rₘ) / Var(Rₘ)",
     formulaDesc: "Sensitivity of portfolio returns relative to the S&P 500 market benchmark (SPY).",
@@ -79,50 +80,73 @@ const METRIC_CONFIG = [
   },
 ];
 
-function formatValue(val, format) {
-  if (format === "pct") return `${(val * 100).toFixed(2)}%`;
-  return val.toFixed(2);
+function fmt(val, format) {
+  if (val == null || !isFinite(val)) return "—";
+  return format === "pct" ? `${(val * 100).toFixed(2)}%` : val.toFixed(2);
 }
 
-// ── Popover Component ──
-// Inline expansion panel — no fixed positioning, no SSR issues
-function MetricExpansion({ config, value, onClose }) {
+// ── Glassmorphic modal overlay ────────────────────────────────────────────────
+function MetricModal({ config, value, onClose }) {
   return (
-    <div className="mt-3 rounded-2xl bg-surface-elevated/80 backdrop-blur-xl border border-border-bright overflow-hidden animate-fade-in-up shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-      {/* Header bar */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
       <div
-        className="flex items-center justify-between px-5 py-3 border-b border-border/40"
-        style={{ background: config.bgGlow }}
+        className="relative w-full max-w-lg rounded-2xl border overflow-hidden shadow-2xl"
+        style={{
+          background: "rgba(8,14,28,0.97)",
+          backdropFilter: "blur(24px)",
+          borderColor: `${config.color}30`,
+          boxShadow: `0 0 60px ${config.color}18, 0 24px 64px rgba(0,0,0,0.8)`,
+        }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5">
-          <config.icon className={`w-4 h-4 ${config.color}`} />
-          <span className="text-sm font-semibold text-foreground">{config.label}</span>
-          <span className={`text-lg font-bold font-mono ml-2 ${config.color}`}>
-            {formatValue(value, config.format)}
-          </span>
-        </div>
-        <button
-          onClick={onClose}
-          className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface transition-all"
+        {/* Modal header */}
+        <div
+          className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]"
+          style={{ background: config.bgGlow }}
         >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
-        {/* Formula block */}
-        <div className="px-4 py-3 rounded-xl bg-background/50 border border-border/40 overflow-hidden">
-          <p className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-bold">Formula</p>
-          <p className="text-base font-mono text-accent tracking-wide leading-snug break-words whitespace-normal overflow-wrap-anywhere">{config.formula}</p>
-          <p className="text-[11px] text-muted-foreground mt-2.5 leading-relaxed break-words whitespace-normal">{config.formulaDesc}</p>
+          <div className="flex items-center gap-3">
+            <config.icon className="w-5 h-5" style={{ color: config.color }} />
+            <span className="text-base font-bold text-white">{config.label}</span>
+            <span className="font-number text-2xl font-black ml-2" style={{ color: config.color }}>
+              {fmt(value, config.format)}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Benchmark block */}
-        <div className="px-4 py-3 rounded-xl bg-accent-green/[0.04] border border-accent-green/10 overflow-hidden">
-          <p className="text-[9px] uppercase tracking-widest text-accent-green/60 mb-2 font-bold flex items-center gap-1">
-            <Info className="w-2.5 h-2.5 shrink-0" /> What&apos;s Good
-          </p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed break-words whitespace-normal">{config.good}</p>
+        {/* Modal body */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-6">
+          {/* Formula */}
+          <div className="rounded-xl border border-white/[0.07] bg-black/30 p-4">
+            <p className="text-[9px] font-mono font-bold text-white/30 uppercase tracking-widest mb-3">
+              Formula
+            </p>
+            <p className="font-mono text-base font-bold break-words whitespace-normal leading-relaxed"
+              style={{ color: config.color }}>
+              {config.formula}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-3 leading-relaxed break-words whitespace-normal">
+              {config.formulaDesc}
+            </p>
+          </div>
+
+          {/* Interpretation */}
+          <div className="rounded-xl border border-[#00ff87]/10 bg-[#00ff87]/[0.03] p-4">
+            <p className="text-[9px] font-mono font-bold text-[#00ff87]/50 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Info className="w-3 h-3" /> What&apos;s Good
+            </p>
+            <p className="text-[11px] text-gray-400 leading-relaxed break-words whitespace-normal">
+              {config.good}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -130,38 +154,35 @@ function MetricExpansion({ config, value, onClose }) {
 }
 
 export default function MetricsPanel({ metrics, hasAssets = false }) {
-  const [activePopover, setActivePopover] = useState(null);
+  const [selected, setSelected] = useState(null);
 
-  const handleClick = (key) => {
-    setActivePopover((prev) => (prev === key ? null : key));
-  };
+  const handleClick = (key) => setSelected((prev) => (prev === key ? null : key));
+  const closeModal  = () => setSelected(null);
 
-  // ── Empty state: no assets added yet ──
+  const selectedConfig = selected ? METRIC_CONFIG.find((c) => c.key === selected) : null;
+
+  // ── Empty state ───────────────────────────────────────────────────────────
   if (!hasAssets) {
     return (
       <section className="animate-fade-in-up">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-muted/40" />
-          <span className="text-muted/40">Quantitative Summary</span>
+        <h2 className="text-xs font-bold text-white/30 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4" />
+          Quantitative Summary
         </h2>
-        <div className="glass-card p-10 flex flex-col items-center justify-center text-center">
-          <div className="relative mb-5">
-            <div className="w-16 h-16 rounded-2xl bg-surface-elevated border border-border/50 flex items-center justify-center">
-              <BarChart3 className="w-7 h-7 text-muted/25" />
-            </div>
-            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-surface-elevated border border-border/50 flex items-center justify-center">
-              <Zap className="w-2.5 h-2.5 text-muted/30" />
-            </div>
+        <div className="glass-card p-8 flex flex-col items-center justify-center text-center">
+          <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-center mb-4">
+            <BarChart3 className="w-6 h-6 text-white/20" />
           </div>
-          <p className="text-sm font-semibold text-muted-foreground mb-2">No Analytics Yet</p>
-          <p className="text-xs text-muted/50 max-w-xs leading-relaxed">
-            Search and select assets above to construct your portfolio and generate institutional risk analytics.
+          <p className="text-sm font-semibold text-white/40 mb-1">No Analytics Yet</p>
+          <p className="text-xs text-white/20 max-w-xs leading-relaxed">
+            Select assets to generate institutional risk analytics.
           </p>
-          <div className="mt-5 grid grid-cols-3 gap-2 w-full max-w-xs opacity-20 pointer-events-none select-none">
-            {["Sharpe", "Sortino", "Vol"].map((label) => (
-              <div key={label} className="metric-card p-3">
-                <div className="h-2 w-8 bg-muted/20 rounded mb-2" />
-                <div className="h-5 w-12 bg-muted/20 rounded" />
+          {/* Ghost cards */}
+          <div className="mt-6 grid grid-cols-3 md:grid-cols-6 gap-3 w-full opacity-10 pointer-events-none select-none">
+            {METRIC_CONFIG.map((cfg) => (
+              <div key={cfg.key} className="metric-card p-4">
+                <div className="h-2 w-10 bg-white/20 rounded mb-3" />
+                <div className="h-7 w-14 bg-white/20 rounded" />
               </div>
             ))}
           </div>
@@ -170,22 +191,22 @@ export default function MetricsPanel({ metrics, hasAssets = false }) {
     );
   }
 
-  // ── Loading state: assets added but metrics computing ──
+  // ── Loading state ─────────────────────────────────────────────────────────
   if (!metrics) {
     return (
       <section className="animate-fade-in-up">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-accent" />
+        <h2 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-cyan-400" />
           Quantitative Summary
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           {METRIC_CONFIG.map((cfg) => (
             <div key={cfg.key} className="metric-card p-4 animate-pulse">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-4 h-4 rounded bg-muted/10" />
-                <div className="h-2.5 w-16 rounded bg-muted/10" />
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-4 h-4 rounded bg-white/[0.06]" />
+                <div className="h-2.5 w-16 rounded bg-white/[0.06]" />
               </div>
-              <div className="h-7 w-20 rounded bg-muted/10" />
+              <div className="h-8 w-20 rounded bg-white/[0.06]" />
             </div>
           ))}
         </div>
@@ -193,54 +214,63 @@ export default function MetricsPanel({ metrics, hasAssets = false }) {
     );
   }
 
-  // ── Active state: full metrics ──
+  // ── Active state ──────────────────────────────────────────────────────────
   return (
-    <section className="animate-fade-in-up">
-      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
-        <BarChart3 className="w-4 h-4 text-accent" />
-        Quantitative Summary
-        <span className="text-[10px] font-normal normal-case tracking-normal text-muted/50 ml-1">
-          Click any metric for details
-        </span>
-      </h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {METRIC_CONFIG.map((cfg) => {
-          const isActive = activePopover === cfg.key;
-          return (
-            <button
-              key={cfg.key}
-              onClick={() => handleClick(cfg.key)}
-              className={`metric-card p-4 text-left cursor-pointer transition-all group/metric overflow-hidden ${
-                isActive ? `ring-1 ${cfg.borderColor} shadow-lg` : "hover:border-border-bright"
-              }`}
-              style={isActive ? { background: cfg.bgGlow } : undefined}
-            >
-              <div className="flex items-center gap-2 mb-3 min-w-0">
-                <cfg.icon className={`w-4 h-4 shrink-0 ${cfg.color}`} />
-                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide truncate">
-                  {cfg.label}
-                </span>
-              </div>
-              <p className="font-number text-3xl font-black text-gray-100 truncate leading-none mb-2">
-                {formatValue(metrics[cfg.key], cfg.format)}
-              </p>
-              <div className="mt-1 flex items-center gap-1 text-[9px] text-white/25 group-hover/metric:text-white/50 transition-colors min-w-0">
-                <Info className="w-2.5 h-2.5 shrink-0" />
-                <span className="truncate">{isActive ? "Click to close" : "Click for formula"}</span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+    <>
+      <section className="animate-fade-in-up">
+        <h2 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-cyan-400" />
+          Quantitative Summary
+          <span className="text-[9px] font-normal normal-case tracking-normal text-white/20 ml-1">
+            Click any metric for details
+          </span>
+        </h2>
 
-      {/* Inline expansion panel — renders below the metric grid */}
-      {activePopover && (
-        <MetricExpansion
-          config={METRIC_CONFIG.find((c) => c.key === activePopover)}
-          value={metrics[activePopover]}
-          onClose={() => setActivePopover(null)}
+        {/* 6-column card row */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {METRIC_CONFIG.map((cfg) => {
+            const isActive = selected === cfg.key;
+            return (
+              <button
+                key={cfg.key}
+                onClick={() => handleClick(cfg.key)}
+                className={`metric-card p-4 text-left cursor-pointer transition-all group overflow-hidden ${
+                  isActive ? `ring-1 ${cfg.borderColor} shadow-lg` : "hover:border-white/20"
+                }`}
+                style={isActive ? { background: cfg.bgGlow } : undefined}
+              >
+                {/* Label row */}
+                <div className="flex items-center gap-2 mb-3 min-w-0">
+                  <cfg.icon className="w-3.5 h-3.5 shrink-0" style={{ color: cfg.color }} />
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none truncate">
+                    {cfg.label}
+                  </span>
+                </div>
+
+                {/* Value — NOT truncated, allowed to wrap if very long */}
+                <p className="font-number text-2xl font-black text-gray-100 leading-none mb-2 break-all">
+                  {fmt(metrics[cfg.key], cfg.format)}
+                </p>
+
+                {/* Hint */}
+                <div className="flex items-center gap-1 text-[8px] text-white/20 group-hover:text-white/40 transition-colors">
+                  <Info className="w-2.5 h-2.5 shrink-0" />
+                  <span>{isActive ? "Close" : "Details"}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Glassmorphic modal overlay */}
+      {selectedConfig && selected && (
+        <MetricModal
+          config={selectedConfig}
+          value={metrics[selected]}
+          onClose={closeModal}
         />
       )}
-    </section>
+    </>
   );
 }
