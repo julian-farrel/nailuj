@@ -111,18 +111,18 @@ function MetricExpansion({ config, value, onClose }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
         {/* Formula block */}
-        <div className="px-4 py-3 rounded-xl bg-background/50 border border-border/40">
+        <div className="px-4 py-3 rounded-xl bg-background/50 border border-border/40 overflow-hidden">
           <p className="text-[9px] uppercase tracking-widest text-muted-foreground mb-2 font-bold">Formula</p>
-          <p className="text-base font-mono text-accent tracking-wide leading-snug">{config.formula}</p>
-          <p className="text-[11px] text-muted-foreground mt-2.5 leading-relaxed">{config.formulaDesc}</p>
+          <p className="text-base font-mono text-accent tracking-wide leading-snug break-words whitespace-normal overflow-wrap-anywhere">{config.formula}</p>
+          <p className="text-[11px] text-muted-foreground mt-2.5 leading-relaxed break-words whitespace-normal">{config.formulaDesc}</p>
         </div>
 
         {/* Benchmark block */}
-        <div className="px-4 py-3 rounded-xl bg-accent-green/[0.04] border border-accent-green/10">
+        <div className="px-4 py-3 rounded-xl bg-accent-green/[0.04] border border-accent-green/10 overflow-hidden">
           <p className="text-[9px] uppercase tracking-widest text-accent-green/60 mb-2 font-bold flex items-center gap-1">
-            <Info className="w-2.5 h-2.5" /> What&apos;s Good
+            <Info className="w-2.5 h-2.5 shrink-0" /> What&apos;s Good
           </p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">{config.good}</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed break-words whitespace-normal">{config.good}</p>
         </div>
       </div>
     </div>
@@ -210,23 +210,23 @@ export default function MetricsPanel({ metrics, hasAssets = false }) {
             <button
               key={cfg.key}
               onClick={() => handleClick(cfg.key)}
-              className={`metric-card p-4 text-left cursor-pointer transition-all group/metric ${
+              className={`metric-card p-4 text-left cursor-pointer transition-all group/metric overflow-hidden ${
                 isActive ? `ring-1 ${cfg.borderColor} shadow-lg` : "hover:border-border-bright"
               }`}
               style={isActive ? { background: cfg.bgGlow } : undefined}
             >
-              <div className="flex items-center gap-2 mb-2">
-                <cfg.icon className={`w-4 h-4 ${cfg.color}`} />
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              <div className="flex items-center gap-2 mb-3 min-w-0">
+                <cfg.icon className={`w-4 h-4 shrink-0 ${cfg.color}`} />
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide truncate">
                   {cfg.label}
                 </span>
               </div>
-              <p className={`text-xl font-bold font-mono ${cfg.color}`}>
+              <p className="font-number text-3xl font-black text-gray-100 truncate leading-none mb-2">
                 {formatValue(metrics[cfg.key], cfg.format)}
               </p>
-              <div className="mt-2 flex items-center gap-1 text-[9px] text-muted/40 group-hover/metric:text-muted/70 transition-colors">
-                <Info className="w-2.5 h-2.5" />
-                <span>{isActive ? "Click to close" : "Click for formula"}</span>
+              <div className="mt-1 flex items-center gap-1 text-[9px] text-white/25 group-hover/metric:text-white/50 transition-colors min-w-0">
+                <Info className="w-2.5 h-2.5 shrink-0" />
+                <span className="truncate">{isActive ? "Click to close" : "Click for formula"}</span>
               </div>
             </button>
           );

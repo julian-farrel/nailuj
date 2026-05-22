@@ -182,7 +182,7 @@ export default function PortfolioBuilder({
             onChange={(e) => handleSearch(e.target.value)}
             onFocus={() => { if (results.length > 0) setShowDropdown(true); }}
             placeholder='Search ticker or name (e.g. "AAPL", "Bitcoin")'
-            className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground focus:outline-none"
+            className="flex-1 bg-transparent text-lg text-foreground placeholder-muted-foreground focus:outline-none font-medium"
           />
           {searching && <Loader2 className="w-4 h-4 text-accent animate-spin" />}
           {query && !searching && (
@@ -421,27 +421,27 @@ export default function PortfolioBuilder({
                   </div>
 
                   {/* ── Ticker + Name ── */}
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 overflow-hidden">
                     <span
                       className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ background: color }}
                     />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold font-mono text-foreground cursor-default">
+                    <div className="min-w-0 overflow-hidden flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-bold font-mono text-foreground cursor-default shrink-0">
                           {asset.ticker}
                         </span>
                         {asset.loading && (
-                          <Loader2 className="w-3 h-3 text-accent animate-spin" />
+                          <Loader2 className="w-3 h-3 text-accent animate-spin shrink-0" />
                         )}
                         {asset.priceChangePercent24h != null && !asset.loading && (
-                          <span className={`text-[9px] font-mono ${asset.priceChangePercent24h >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+                          <span className={`text-[9px] font-mono shrink-0 ${asset.priceChangePercent24h >= 0 ? "text-accent-green" : "text-accent-red"}`}>
                             {asset.priceChangePercent24h >= 0 ? <TrendingUp className="w-2.5 h-2.5 inline" /> : <TrendingDown className="w-2.5 h-2.5 inline" />}
                             {" "}{asset.priceChangePercent24h >= 0 ? "+" : ""}{asset.priceChangePercent24h.toFixed(2)}%
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-muted-foreground truncate leading-tight">{asset.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate leading-tight max-w-full">{asset.name}</p>
                     </div>
                   </div>
 
@@ -476,8 +476,7 @@ export default function PortfolioBuilder({
                         const val = Math.max(0, Math.min(100, Number(e.target.value) || 0));
                         onWeightChange(asset.ticker, val);
                       }}
-                      className="w-10 bg-transparent border-none text-right text-sm font-mono font-bold focus:outline-none focus:ring-0"
-                      style={{ color: color }}
+                      className="w-12 bg-transparent border-none text-right text-lg font-mono font-black focus:outline-none focus:ring-0 text-white"
                     />
                     <span className="text-xs font-mono text-muted-foreground">%</span>
                   </div>

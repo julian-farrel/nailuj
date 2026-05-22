@@ -268,19 +268,19 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, sc
             <button
               key={s.key}
               onClick={() => setScenario(s.key)}
-              style={{
-                borderColor: isActive ? accent : undefined,
-                color:       isActive ? accent : undefined,
-                background:  isActive ? `${accent}15` : undefined,
-                boxShadow:   isActive ? `0 0 12px ${accent}25` : undefined,
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-semibold border transition-all ${
+              style={isActive ? {
+                borderColor: accent,
+                color:       accent,
+                background:  `${accent}20`,
+                boxShadow:   `0 0 16px ${accent}30`,
+              } : undefined}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border transition-all ${
                 isActive
                   ? "border-current"
-                  : "bg-surface-elevated border-border text-muted-foreground hover:text-foreground hover:border-border-bright"
+                  : "bg-surface-elevated border-border text-gray-300 hover:text-white hover:border-white/30"
               }`}
             >
-              {s.key !== "base" && <AlertTriangle className="w-3 h-3" />}
+              {s.key !== "base" && <AlertTriangle className="w-3.5 h-3.5" />}
               {s.label}
             </button>
           );
@@ -359,8 +359,15 @@ function ActiveChart({ portfolioReturn, assetMetricsMap, horizon, setHorizon, sc
               fontFamily="JetBrains Mono"
               tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
             />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: "12px", fontFamily: "Inter", paddingTop: "12px" }} />
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: "rgba(255,255,255,0.12)", strokeWidth: 1 }} />
+            <Legend
+              wrapperStyle={{
+                fontSize: "12px",
+                fontFamily: "'JetBrains Mono', monospace",
+                color: "#e2e8f0",
+                paddingTop: "14px",
+              }}
+            />
 
             {/* Base lines */}
             <Area type="monotone" dataKey="portfolio" name="Your Portfolio" stroke="#00e5ff" strokeWidth={2.5} fill="url(#gradPortfolio)" dot={false} connectNulls />
