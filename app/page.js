@@ -8,7 +8,7 @@ import ProjectionChart from "./components/ProjectionChart";
 import ResearchReport from "./components/ResearchReport";
 import NewsFeed from "./components/NewsFeed";
 import CorrelationMatrix from "./components/CorrelationMatrix";
-import EconomicCalendar from "./components/EconomicCalendar";
+import WhaleAlerts from "./components/WhaleAlerts";
 import {
   computeAssetMetrics,
   computePortfolioMetrics,
@@ -25,6 +25,7 @@ import {
 export default function Home() {
   const [assets, setAssets]   = useState([]);
   const [weights, setWeights] = useState({});
+  const [preloaded, setPreloaded] = useState(false);
 
   // ── Live Risk-Free Rate (13-week T-Bill via ^IRX) ───────────────
   const [riskFreeRate, setRiskFreeRate] = useState(0.045); // fallback
@@ -39,6 +40,16 @@ export default function Home() {
       })
       .catch(() => {}); // silently keep fallback
   }, []);
+
+  // ── Pre-populate 60/40 BTC/ETH benchmark on first mount ─────
+  useEffect(() => {
+    if (preloaded) return;
+    setPreloaded(true);
+    handleAddAsset("BTC-USD", "Bitcoin", "crypto");
+    handleAddAsset("ETH-USD", "Ethereum", "crypto");
+    setWeights({ "BTC-USD": 60, "ETH-USD": 40 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloaded]);
 
   // ── Derived state ──────────────────────────────────────────
 
@@ -266,8 +277,8 @@ export default function Home() {
         </footer>
       </div>
 
-      {/* ── RIGHT: Economic Calendar Sidebar ── */}
-      <EconomicCalendar />
+      {/* ── RIGHT: Whale Alerts Sidebar ── */}
+      <WhaleAlerts />
     </div>
   );
 }

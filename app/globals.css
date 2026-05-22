@@ -289,3 +289,36 @@ input[type="number"] {
   animation: marquee 30s linear infinite;
 }
 
+/* ── Strict monospace for numerical alignment ────────────── */
+.font-number {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ── Semantic positive/negative colors ──────────────────── */
+:root {
+  --color-positive: #00ff87;
+  --color-negative: #ff3860;
+}
+
+/* ── Edge-to-edge footer enforcement ───────────────────── */
+footer {
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* ── Whale pulse keyframes ─────────────────────────────── */
+@keyframes whale-ping {
+  0% { transform: scale(1); opacity: 0.8; }
+  70% { transform: scale(2.5); opacity: 0; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes whale-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
