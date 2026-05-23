@@ -103,7 +103,7 @@ function ChartEmptyState() {
             <div
               key={i}
               className="flex-1 rounded-t bg-accent"
-              style={{ height: `${20 + Math.sin(i * 0.5) * 15 + i * 3}%` }}
+              style={{ height: `${(20 + Math.sin(i * 0.5) * 15 + i * 3).toFixed(4)}%` }}
             />
           ))}
         </div>
