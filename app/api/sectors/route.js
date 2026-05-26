@@ -32,23 +32,19 @@ export async function GET() {
         s.volume_24h >= 10_000_000
     );
 
-    // 2. Sort descending by 24h market cap change (top pumpers first)
-    filtered.sort(
-      (a, b) =>
-        (b.market_cap_change_24h ?? -Infinity) -
-        (a.market_cap_change_24h ?? -Infinity)
-    );
+    // 2. Sort descending by 24h volume (highest traded sectors first)
+    filtered.sort((a, b) => (b.volume_24h ?? 0) - (a.volume_24h ?? 0));
 
     // 3. Top 20
     const sliced = filtered.slice(0, 20);
 
     // 4. Return clean shape
     const sectors = sliced.map((s) => ({
-      id:                  s.id,
-      name:                s.name,
+      id:                   s.id,
+      name:                 s.name,
       market_cap_change_24h: s.market_cap_change_24h ?? 0,
-      volume_24h:          s.volume_24h,
-      top_3_coins:         Array.isArray(s.top_3_coins_id)
+      volume_24h:           s.volume_24h,
+      top_3_coins:          Array.isArray(s.top_3_coins_id)
         ? s.top_3_coins_id.slice(0, 3)
         : [],
     }));

@@ -3,12 +3,11 @@ export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 
-// ── Config ───────────────────────────────────────────────────────────────────
-const MIN_USD        = 1_000_000;   // $1M+ anomaly threshold
-const UNUSUAL_PCT    = 0.01;        // 1% of 24h volume = unusual
-const TOP_N_COINS    = 20;          // scan top 20 by volume
+// ── Config ────────────────────────────────────────────────────────────────────
+const MIN_TRADE_USD  = 50_000;   // $50K minimum per trade
+const MIN_USD        = 1_000_000; // $1M+ for Hyperliquid walls
+const TOP_N_COINS    = 20;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 const NO_STORE = { cache: "no-store" };
 
 function safeFloat(v) {
@@ -16,27 +15,9 @@ function safeFloat(v) {
   return isFinite(n) ? n : 0;
 }
 
-// ── Binance: get all USDT 24hr tickers ───────────────────────────────────────
-async function getBinanceTickers() {
-  const res = await fetch(
-    "https://api.binance.com/api/v3/ticker/24hr",
-    NO_STORE
-  );
-  if (!res.ok) throw new Error(`Binance 24hr ticker: ${res.status}`);
-  const tickers = await res.json();
-
-  return tickers
-    .filter((t) => t.symbol.endsWith("USDT"))
-    .map((t) => ({
-      symbol:    t.symbol,
-      asset:     t.symbol.replace("USDT", ""),
-      price:     safeFloat(t.lastPrice),
-      volume24h: safeFloat(t.quoteVolume), // already in USD
-    }))
-    .filter((t) => t.price > 0 && t.volume24h > 0);
-}
-
-// ── Binance: recent trades for one symbol ────────────────────────────────────
+// ── Binance: recent trades for a single explicit symbol ───────────────────────
+// NOTE: /api/v3/trades accepts exactly ONE symbol per request.
+// We make two independent calls and combine results.
 async function getBinanceTrades(symbol, asset, volume24h) {
   const res = await fetch(
     `https://api.binance.com/api/v3/trades?symbol=${symbol}&limit=100`,
@@ -49,27 +30,27 @@ async function getBinanceTrades(symbol, asset, volume24h) {
     const price    = safeFloat(t.price);
     const qty      = safeFloat(t.qty);
     const usdValue = price * qty;
-    if (usdValue < MIN_USD) return [];
+    if (usdValue < MIN_TRADE_USD) return [];
 
     const unusualPct = volume24h > 0 ? (usdValue / volume24h) * 100 : 0;
     return [{
-      id:             `BNB-${asset}-${t.id}`,
-      source:         "Binance",
+      id:              `BNB-${asset}-${t.id}`,
+      source:          "Binance",
       asset,
-      side:           t.isBuyerMaker ? "SELL" : "BUY",
-      type:           "MARKET",
+      side:            t.isBuyerMaker ? "SELL" : "BUY",
+      type:            "MARKET",
       price,
       qty,
-      usdValue:       Math.round(usdValue),
-      volume24h:      Math.round(volume24h),
+      usdValue:        Math.round(usdValue),
+      volume24h:       Math.round(volume24h),
       unusualActivity: unusualPct >= 1,
-      unusualPct:     +unusualPct.toFixed(3),
-      time:           t.time,
+      unusualPct:      +unusualPct.toFixed(3),
+      time:            t.time,
     }];
   });
 }
 
-// ── Hyperliquid: meta + asset contexts (all coins) ───────────────────────────
+// ── Hyperliquid: meta + asset contexts ───────────────────────────────────────
 async function getHyperliquidMeta() {
   const res = await fetch("https://api.hyperliquid.xyz/info", {
     method:  "POST",
@@ -80,19 +61,17 @@ async function getHyperliquidMeta() {
   if (!res.ok) throw new Error(`Hyperliquid meta: ${res.status}`);
   const [meta, ctxs] = await res.json();
 
-  // meta.universe[i] => { name, szDecimals }
-  // ctxs[i]          => { markPx, dayNtlVlm, ... }
   return meta.universe.map((coin, i) => {
     const ctx = ctxs[i] || {};
     return {
       coin:      coin.name,
       markPrice: safeFloat(ctx.markPx),
-      volume24h: safeFloat(ctx.dayNtlVlm), // in USD
+      volume24h: safeFloat(ctx.dayNtlVlm),
     };
   }).filter((c) => c.markPrice > 0 && c.volume24h > 0);
 }
 
-// ── Hyperliquid: L2 orderbook for one coin ───────────────────────────────────
+// ── Hyperliquid: L2 orderbook walls ──────────────────────────────────────────
 async function getHyperliquidWalls(coin, volume24h) {
   const res = await fetch("https://api.hyperliquid.xyz/info", {
     method:  "POST",
@@ -138,50 +117,52 @@ async function getHyperliquidWalls(coin, volume24h) {
 // ── Route handler ─────────────────────────────────────────────────────────────
 export async function GET() {
   try {
-    // Phase 1: get universe + volumes from both exchanges in parallel
-    const [binanceTickers, hlCoins] = await Promise.allSettled([
-      getBinanceTickers(),
-      getHyperliquidMeta(),
-    ]).then((results) => results.map((r) => r.status === "fulfilled" ? r.value : []));
+    // Phase 1: fetch Hyperliquid universe for volume-ranked coin list
+    const hlCoins = await getHyperliquidMeta().catch(() => []);
 
-    // Merge volumes: prefer Binance, supplement with Hyperliquid
-    const volumeMap = new Map();
-    for (const t of binanceTickers) volumeMap.set(t.asset, { ...t, exchange: "binance" });
-    for (const c of hlCoins) {
-      if (!volumeMap.has(c.coin)) {
-        volumeMap.set(c.coin, { asset: c.coin, symbol: `${c.coin}USDT`, price: c.markPrice, volume24h: c.volume24h, exchange: "hl" });
-      }
-    }
+    // Fixed BTC + ETH volumes from HL for Binance trade context
+    const btcVol24h = hlCoins.find((c) => c.coin === "BTC")?.volume24h ?? 0;
+    const ethVol24h = hlCoins.find((c) => c.coin === "ETH")?.volume24h ?? 0;
 
-    // Top N by 24h USD volume
-    const top = [...volumeMap.values()]
+    // Phase 2: Binance BTC + ETH trades as two SEPARATE requests (one symbol each)
+    // + Hyperliquid L2 walls for top coins — all in parallel
+    const topHlCoins = hlCoins
       .sort((a, b) => b.volume24h - a.volume24h)
       .slice(0, TOP_N_COINS);
 
-    // Phase 2: scan each top coin for $1M+ anomalies in parallel
-    const scanResults = await Promise.allSettled(
-      top.flatMap((coin) => {
-        const tasks = [];
-        if (coin.exchange === "binance" || volumeMap.get(coin.asset)?.exchange === "binance") {
-          tasks.push(getBinanceTrades(`${coin.asset}USDT`, coin.asset, coin.volume24h));
-        }
-        tasks.push(getHyperliquidWalls(coin.asset, coin.volume24h));
-        return tasks;
-      })
-    );
+    const [btcTrades, ethTrades, ...hlWallResults] = await Promise.allSettled([
+      getBinanceTrades("BTCUSDT", "BTC", btcVol24h),
+      getBinanceTrades("ETHUSDT", "ETH", ethVol24h),
+      ...topHlCoins.map((c) => getHyperliquidWalls(c.coin, c.volume24h)),
+    ]);
 
-    const alerts = scanResults
+    // Combine Binance BTC + ETH trades
+    const binanceAlerts = [
+      ...(btcTrades.status === "fulfilled" ? btcTrades.value : []),
+      ...(ethTrades.status === "fulfilled" ? ethTrades.value : []),
+    ].sort((a, b) => b.time - a.time); // newest first
+
+    // Combine all Hyperliquid walls
+    const hlAlerts = hlWallResults
       .filter((r) => r.status === "fulfilled")
-      .flatMap((r) => r.value)
+      .flatMap((r) => r.value);
+
+    // Merge, deduplicate by id, sort by usdValue descending
+    const allAlerts = [...binanceAlerts, ...hlAlerts]
       .sort((a, b) => b.usdValue - a.usdValue)
       .slice(0, 100);
 
-    const errors = scanResults
+    const errors = [btcTrades, ethTrades, ...hlWallResults]
       .filter((r) => r.status === "rejected")
       .map((r) => r.reason?.message ?? "unknown");
 
     return NextResponse.json(
-      { alerts, topCoinsScanned: top.map((c) => c.asset), fetchedAt: new Date().toISOString(), errors },
+      {
+        alerts:          allAlerts,
+        topCoinsScanned: ["BTC", "ETH", ...topHlCoins.map((c) => c.coin)],
+        fetchedAt:       new Date().toISOString(),
+        errors,
+      },
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
