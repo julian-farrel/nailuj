@@ -10,7 +10,7 @@ import ResearchReport from "./components/ResearchReport";
 import NewsFeed from "./components/NewsFeed";
 import CorrelationMatrix from "./components/CorrelationMatrix";
 import WhaleAlerts from "./components/WhaleAlerts";
-import LiveChart from "./components/LiveChart";
+import SectorAlerts from "./components/SectorAlerts";
 import {
   computeAssetMetrics,
   computePortfolioMetrics,
@@ -234,11 +234,9 @@ export default function Home() {
           <main className="p-4 space-y-4 min-w-0">
 
             {/* ═══════════════════════════════════════════════════════════
-                HERO SECTION — Live Trading Chart + L2 Orderbook
+                HERO SECTION — Global Narrative & Sector Tracker
             ═══════════════════════════════════════════════════════════ */}
-            <div style={{ minHeight: "60vh" }}>
-              <LiveChart />
-            </div>
+            <SectorAlerts />
 
             {/* ═══════════════════════════════════════════════════════════
                 SECONDARY SECTION — Quantitative Analytics
